@@ -79,7 +79,7 @@ main{padding:10px 0 80px;max-width:720px;margin:0 auto}
 .site .name{font-family:Fredoka,sans-serif;font-weight:500;font-size:1.1rem;line-height:1.2}
 .site .sub{font-size:.88rem;color:var(--muted)}
 .site .facts{grid-column:2/4;font-size:.85rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 12px}
-.score{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.75rem;line-height:1;min-width:2.4ch;text-align:right}
+.score{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.75rem;line-height:1;min-width:2ch;text-align:right}
 .score small{display:block;font-family:"Nunito Sans",sans-serif;font-weight:700;font-size:.7rem;text-align:right;letter-spacing:.02em}
 .g{color:var(--good)} .m{color:var(--maybe)} .p{color:var(--poor)}
 .score.g{text-shadow:0 0 18px color-mix(in srgb,var(--good) 55%,transparent)}
@@ -580,6 +580,7 @@ function reasons(s,day){
    ============================================================ */
 let SITES=[],DAYKEYS=[],curDay=null,loading=false;
 const cls=v=>v>=65?'g':v>=40?'m':'p';
+const disp=v=>Math.max(1,Math.min(10,Math.round(v/10))); // show 1–10, rank on the full score
 const word=v=>v>=65?'Good':v>=40?'Maybe':'Poor';
 
 function dial(s,wd,ws,size=52){
@@ -621,7 +622,7 @@ function render(){
       html+=`<button class="site best" data-id="${esc(s.id)}">
         <div>${dial(s,p.wd,p.ws,72)}</div>
         <div><div class="name">${esc(s.name)}</div><div class="sub">${TYPE_LABEL[d.type]}, ${win}</div></div>
-        <div class="score ${cls(d.score)}">${d.score}<small>${word(d.score)}</small></div>
+        <div class="score ${cls(d.score)}">${disp(d.score)}<small>${word(d.score)}</small></div>
         <p class="why">${esc(R.out[0])}</p>
         <div class="facts" style="grid-column:1/4">${facts(s,d)}</div>
         <div class="strip-wrap" style="grid-column:1/4">${strip(d)}</div></button>`;
@@ -630,7 +631,7 @@ function render(){
       html+=`<button class="site" data-id="${esc(s.id)}">
         <div>${dial(s,p.wd,p.ws)}</div>
         <div><div class="name">${esc(s.name)}</div><div class="sub">${TYPE_LABEL[d.type]}, ${win}</div></div>
-        <div class="score ${cls(d.score)}">${d.score}<small>${word(d.score)}</small></div>
+        <div class="score ${cls(d.score)}">${disp(d.score)}<small>${word(d.score)}</small></div>
         <div class="facts">${facts(s,d)}</div>
         <div style="grid-column:2/4">${strip(d)}</div></button>`;
     }
@@ -651,10 +652,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){const o=[...documen
 function showDetail(id){
   const s=SITES.find(x=>x.id===id);if(!s)return;const d=s.days[curDay];
   $('#dTitle').textContent=s.name;
-  $('#dScore').className='score '+cls(d.score);$('#dScore').innerHTML=`${d.score}<small>${word(d.score)}</small>`;
+  $('#dScore').className='score '+cls(d.score);$('#dScore').innerHTML=`${disp(d.score)}<small>${word(d.score)}</small>`;
   const R=reasons(s,d);
-  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr><td>${hourLabel(r.hr)}</td><td class="sc ${cls(v)}">${v}</td><td>${U.spd(r.ws)} ${dirName(r.wd)}</td><td>${U.spd(r.gust)}</td><td>${r.depth>100?U.altN(r.top):'–'}</td><td>${r.climb>0.05?U.climb(r.climb):'–'}</td><td>${r.cu?U.altN(r.lcl):'blue'}</td></tr>`}).join('');
-  const other=s.types.filter(t=>t!==d.type).map(t=>{const v=d.rows.map(r=>r.scores[t]);return `${TYPE_LABEL[t]} peaks at ${Math.round(Math.max(...v))}`}).join('. ');
+  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr><td>${hourLabel(r.hr)}</td><td class="sc ${cls(v)}">${disp(v)}</td><td>${U.spd(r.ws)} ${dirName(r.wd)}</td><td>${U.spd(r.gust)}</td><td>${r.depth>100?U.altN(r.top):'–'}</td><td>${r.climb>0.05?U.climb(r.climb):'–'}</td><td>${r.cu?U.altN(r.lcl):'blue'}</td></tr>`}).join('');
+  const other=s.types.filter(t=>t!==d.type).map(t=>{const v=d.rows.map(r=>r.scores[t]);return `${TYPE_LABEL[t]} peaks at ${disp(Math.max(...v))} out of 10`}).join('. ');
   const bb=[s.lon-0.04,s.lat-0.025,s.lon+0.04,s.lat+0.025].map(x=>x.toFixed(4)).join('%2C');
   $('#dBody').innerHTML=`
     <p><strong>${TYPE_LABEL[d.type]}${d.win?`, ${hourLabel(d.win[0])}–${hourLabel(d.win[1])}`:''}</strong></p>
