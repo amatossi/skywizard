@@ -654,7 +654,7 @@ function showDetail(id){
   $('#dTitle').textContent=s.name;
   $('#dScore').className='score '+cls(d.score);$('#dScore').innerHTML=`${disp(d.score)}<small>${word(d.score)}</small>`;
   const R=reasons(s,d);
-  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr><td>${hourLabel(r.hr)}</td><td class="sc ${cls(v)}">${disp(v)}</td><td>${U.spd(r.ws)} ${dirName(r.wd)}</td><td>${U.spd(r.gust)}</td><td>${r.depth>100?U.altN(r.top):'–'}</td><td>${r.climb>0.05?U.climb(r.climb):'–'}</td><td>${r.cu?U.altN(r.lcl):'blue'}</td></tr>`}).join('');
+  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr><td>${hourLabel(r.hr)}</td><td>${dirName(r.wd)}</td><td>${U.spd(r.ws)}</td><td>${U.spd(r.gust)}</td><td class="sc ${cls(v)}">${disp(v)}</td><td>${r.depth>100?U.altN(r.top):'–'}</td><td>${r.climb>0.05?U.climb(r.climb):'–'}</td><td>${r.cu?U.altN(r.lcl):'blue'}</td></tr>`}).join('');
   const other=s.types.filter(t=>t!==d.type).map(t=>{const v=d.rows.map(r=>r.scores[t]);return `${TYPE_LABEL[t]} peaks at ${disp(Math.max(...v))} out of 10`}).join('. ');
   const bb=[s.lon-0.04,s.lat-0.025,s.lon+0.04,s.lat+0.025].map(x=>x.toFixed(4)).join('%2C');
   $('#dBody').innerHTML=`
@@ -663,7 +663,7 @@ function showDetail(id){
     ${R.warn.map(x=>`<div class="warn">${esc(x)}</div>`).join('')}
     ${other?`<p class="small">${esc(other)}.</p>`:''}
     <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${dial(s,d.peak.wd,d.peak.ws,88)}<p class="small" style="margin:0">Shaded wedges are the wind directions this launch works in (darker is better). The arrow is the forecast wind at the best hour.</p></div>
-    <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Score</th><th>Wind</th><th>Gust</th><th>Lift top</th><th>Climb</th><th>Cloudbase</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th><th>Lift top</th><th>Climb</th><th>Cloudbase</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
     <iframe class="mapframe" loading="lazy" title="Map of ${esc(s.name)}" src="https://www.openstreetmap.org/export/embed.html?bbox=${bb}&layer=mapnik&marker=${s.lat}%2C${s.lon}"></iframe>
     <div class="links">
       <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">Directions</a>
