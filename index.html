@@ -137,6 +137,29 @@ select option{color:#211a57}
 .results button{display:block;width:100%;text-align:left;padding:10px 10px;border:0;border-bottom:1px solid var(--line);background:transparent}
 .small{font-size:.82rem;color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--cyan);color:var(--onCyan);font-weight:700;padding:9px 18px;border-radius:999px;z-index:40;font-size:.9rem;display:none}
+
+/* detail: sounding + pilot data */
+tbody tr{cursor:pointer}
+tbody tr.sel td{background:color-mix(in srgb,var(--cyan) 14%,transparent)}
+.hint{font-size:.78rem;color:var(--muted);margin:4px 0 0}
+.panel{margin:18px 0 6px}
+.panel h3{font-family:Fredoka,sans-serif;font-weight:600;font-size:1.2rem;margin:0 0 2px}
+.snd{width:100%;height:auto;display:block;margin-top:6px}
+details.xc{border:1px solid var(--line);border-radius:16px;background:var(--surface);margin:10px 0;overflow:hidden}
+details.xc summary{list-style:none;cursor:pointer;padding:13px 14px;display:flex;align-items:center;gap:10px;font-family:Fredoka,sans-serif;font-weight:500;font-size:1.05rem}
+details.xc summary::-webkit-details-marker{display:none}
+details.xc summary .val{margin-left:auto;font-family:"Nunito Sans",sans-serif;font-weight:800;font-size:.95rem}
+details.xc summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin-left:6px;transition:transform .2s}
+details.xc[open] summary::after{transform:rotate(-135deg)}
+details.xc .in{padding:0 14px 14px}
+details.xc .what{font-size:.88rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.altrow{display:flex;gap:10px;align-items:center;margin:6px 0 10px}
+.altrow input[type=range]{flex:1;accent-color:var(--cyan);height:28px}
+.altrow input[type=number]{width:96px;flex:none}
+.readout{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.readout div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.readout b{display:block;font-family:Fredoka,sans-serif;font-weight:600;font-size:1.15rem}
+.readout span{font-size:.75rem;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -214,7 +237,7 @@ const CURATED=[
  {name:'The Stables',lat:37.7018995,lon:-122.4998547,altFt:60,types:['coastal'],
   dirs:{WSW:1,W:2,WNW:2,NW:1},wind:{mph:[6,9,13,19]},dirSrc:'estimated from cliff orientation, please confirm',
   note:'Paragliding only. Ideal ~10–11 mph, max ~18–20 mph per site procedures. Whitecaps mean it\u2019s too strong. Land on the beach in strong wind.',req:'P3',url:'https://wingsofrogallo.org/the-stables/'},
- {name:'Blue Rock (Vallejo)',lat:38.1379,lon:-122.195,altFt:720,types:['ridge','thermal'],
+ {name:'Blue Rock (Vallejo)',lat:38.1379,lon:-122.195,altFt:720,others:[{name:'Mid launch',altFt:550}],types:['ridge','thermal'],
   dirs:{WSW:2,W:2,WNW:2},dirSrc:'estimated from BHGC notes, please confirm',
   note:'Paragliding site. The local KCAVALLE53 station direction is unreliable; its speed is only reliable in WSW–WNW.',req:'P3 recommended',url:'https://www.sportparagliding.com/blue-rock-vallejo-ca-paragliding'},
  {name:'Channing East',lat:38.1015,lon:-122.181,altFt:660,types:['ridge'],dirs:{E:2,ENE:1,ESE:1},dirSrc:'BHGC',note:'PG only.'},
@@ -308,7 +331,7 @@ function dirsText(arr){
 function curatedSites(){
   return CURATED.map(s=>({id:'c-'+slug(s.name),name:s.name,lat:s.lat,lon:s.lon,alt:s.altFt?s.altFt/FT_PER_M:null,
     types:s.types,dirs:dirsToArr(s.dirs),dirSrc:s.dirs?(s.dirSrc||'club guide'):null,
-    wind:s.wind?s.wind.mph.map(x=>x*KMH_PER_MPH):null,note:s.note||'',req:s.req||'',url:s.url||'',source:'Club guides'}));
+    wind:s.wind?s.wind.mph.map(x=>x*KMH_PER_MPH):null,others:(s.others||[]).map(o=>({name:o.name,alt:o.altFt/FT_PER_M})),note:s.note||'',req:s.req||'',url:s.url||'',source:'Club guides'}));
 }
 
 async function bhgcSites(){
@@ -321,15 +344,16 @@ async function bhgcSites(){
     if(!/^Name:/m.test(block))continue;
     const f={};block.split('\n').forEach(l=>{const m=l.match(/^(\w+):\s?(.*)$/);if(m)f[m[1]]=m[2].trim()});
     if(/no paragliding/i.test(f.Notes||''))continue;
-    const launches=[];const re=/\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*([\dNA.]+))?\s*\)/g;let m;
-    while((m=re.exec(f.LaunchGPS||''))){launches.push({lat:+m[1],lon:+m[2],altFt:m[3]&&m[3]!=='NA'?+m[3]:null})}
+    const launches=[];const re=/(?:'([^']*)'\s*=\s*)?\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*([\dNA.]+))?\s*\)/g;let m;
+    while((m=re.exec(f.LaunchGPS||''))){launches.push({label:m[1]||'',lat:+m[2],lon:+m[3],altFt:m[4]&&m[4]!=='NA'?+m[4]:null})}
     if(!launches.length)continue;
     const L=launches.reduce((a,b)=>(b.altFt||0)>(a.altFt||0)?b:a,launches[0]);
     let dirs=null;
     if(f.WindDirections){const toks=f.WindDirections.replace(/'[^']*'=/g,'').toUpperCase().split(/[^A-Z]+/).filter(Boolean);dirs=listToArr(toks)}
     const alt=L.altFt?L.altFt/FT_PER_M:null;
     const notes=(f.Notes||'').replace(/^"|"$/g,'').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1');
-    out.push({id:'b-'+slug(f.Name),name:f.Name,lat:L.lat,lon:L.lon,alt,types:null,dirs,dirSrc:dirs?'BHGC':null,
+    const others=launches.filter(x=>x!==L&&x.altFt&&L.altFt&&x.altFt<L.altFt-80&&distKm(x.lat,x.lon,L.lat,L.lon)<3).map(x=>({name:(x.label?x.label.replace(/\/.*$/,'').replace(/^./,c=>c.toUpperCase())+' launch':'Lower launch'),alt:x.altFt/FT_PER_M}));
+    out.push({id:'b-'+slug(f.Name),name:f.Name,lat:L.lat,lon:L.lon,alt,types:null,dirs,dirSrc:dirs?'BHGC':null,others,
       note:notes,req:(f.Requirements||'').trim(),url:f.OfficialURL||'',source:'BHGC site database'});
   }
   return out;
@@ -378,25 +402,30 @@ async function osmSites(lat,lon,km){
 
 /* fill missing altitude and launch direction from terrain */
 async function fillTerrain(sites){
-  const cache=store.get('terrain',{});
-  const need=sites.filter(s=>(s.alt==null||!s.dirs)&&!cache[s.id]);
-  const R=300;const angles=[0,45,90,135,180,225,270,315];
-  for(let i=0;i<need.length;i+=11){
-    const chunk=need.slice(i,i+11);const lats=[],lons=[];
-    chunk.forEach(s=>{lats.push(s.lat);lons.push(s.lon);angles.forEach(a=>{lats.push(s.lat+R*Math.cos(rad(a))/111320);lons.push(s.lon+R*Math.sin(rad(a))/(111320*Math.cos(rad(s.lat))))})});
+  // samples terrain around each launch: a 300 m ring (which way the slope faces) and a 1.5 km ring
+  // (how far the launch stands above its surroundings, used for ridge-top wind speed-up)
+  const cache=store.get('terrain2',{});
+  const need=sites.filter(s=>!cache[s.id]);
+  const angles=[0,45,90,135,180,225,270,315];
+  const ring=(s,R)=>angles.map(a=>[s.lat+R*Math.cos(rad(a))/111320,s.lon+R*Math.sin(rad(a))/(111320*Math.cos(rad(s.lat)))]);
+  for(let i=0;i<need.length;i+=5){
+    const chunk=need.slice(i,i+5);const pts=[];
+    chunk.forEach(s=>{pts.push([s.lat,s.lon],...ring(s,300),...ring(s,1500))});
     try{
-      const j=await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${lats.map(x=>x.toFixed(5)).join(',')}&longitude=${lons.map(x=>x.toFixed(5)).join(',')}`);
+      const j=await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${pts.map(p=>p[0].toFixed(5)).join(',')}&longitude=${pts.map(p=>p[1].toFixed(5)).join(',')}`);
       chunk.forEach((s,k)=>{
-        const e=j.elevation.slice(k*9,k*9+9);const e0=e[0];let x=0,y=0,drop=0;
+        const e=j.elevation.slice(k*17,k*17+17);const e0=e[0];let x=0,y=0,drop=0;
         angles.forEach((a,n)=>{const d=e0-e[n+1];if(d>0){x+=d*Math.sin(rad(a));y+=d*Math.cos(rad(a))}drop+=Math.max(0,d)});
-        const slope=drop/8/R;const face=(deg(Math.atan2(x,y))+360)%360;
-        cache[s.id]={alt:e0,face:slope>0.06?face:null,slope};
+        const slope=drop/8/300;const face=(deg(Math.atan2(x,y))+360)%360;
+        const far=e.slice(9,17).sort((p,q)=>p-q);const around=(far[3]+far[4])/2;
+        cache[s.id]={alt:e0,face:slope>0.06?face:null,slope,around};
       });
     }catch(e){console.warn('terrain',e)}
   }
-  store.set('terrain',cache);
+  store.set('terrain2',cache);
   sites.forEach(s=>{const c=cache[s.id];if(!c)return;
     if(s.alt==null)s.alt=c.alt;
+    s.prom=clamp((s.alt??c.alt)-c.around,0,700); // height of launch above the surrounding terrain
     if(!s.dirs&&c.face!=null){const i=Math.round(c.face/22.5)%16;const a=new Array(16).fill(0);a[i]=2;a[(i+1)%16]=2;a[(i+15)%16]=2;a[(i+2)%16]=1;a[(i+14)%16]=1;s.dirs=a;s.dirSrc='estimated from terrain (slope faces '+DIRS[i]+'), please confirm';s.face=c.face}
   });
 }
@@ -440,8 +469,8 @@ async function gatherSites(lat,lon,km){
    WEATHER
    ============================================================ */
 const LEVELS=[1000,975,950,925,900,850,800,750,700,650,600,550,500];
-const SURF=['temperature_2m','dew_point_2m','wind_speed_10m','wind_direction_10m','wind_gusts_10m','cloud_cover','precipitation_probability','cape','lifted_index','shortwave_radiation','is_day','boundary_layer_height','sensible_heat_flux'];
-const LV=[];LEVELS.forEach(p=>['temperature','geopotential_height','wind_speed','wind_direction'].forEach(v=>LV.push(`${v}_${p}hPa`)));
+const SURF=['temperature_2m','dew_point_2m','wind_speed_10m','wind_direction_10m','wind_gusts_10m','cloud_cover','precipitation_probability','cape','lifted_index','shortwave_radiation','is_day','boundary_layer_height','sensible_heat_flux','wind_speed_80m','wind_direction_80m','wind_speed_120m','wind_direction_120m','wind_speed_180m','wind_direction_180m'];
+const LV=[];LEVELS.forEach(p=>['temperature','geopotential_height','wind_speed','wind_direction','relative_humidity'].forEach(v=>LV.push(`${v}_${p}hPa`)));
 const TZ='auto'; // each site's own local time
 
 async function fetchWeather(sites,onProgress){
@@ -464,8 +493,38 @@ function interp(prof,z,key){
   for(let i=1;i<prof.length;i++)if(z<=prof[i].z){const a=prof[i-1],b=prof[i];const f=(z-a.z)/(b.z-a.z);return a[key]+f*(b[key]-a[key])}
   return prof[prof.length-1][key];
 }
+const dewFromRH=(T,rh)=>{const a=17.62,b=243.12,g=Math.log(Math.max(rh,1)/100)+a*T/(b+T);return b*g/(a-g)};
 const toUV=(s,d)=>({u:-s*Math.sin(rad(d)),v:-s*Math.cos(rad(d))});
 const fromUV=(u,v)=>({s:Math.hypot(u,v),d:(deg(Math.atan2(-u,-v))+360)%360});
+
+/* Wind at a launch. The model's 10 m wind sits over smoothed terrain, so a launch that sticks up
+   above its surroundings sees stronger wind. We read the wind profile (10/80/120/180 m, then upper
+   levels) at the launch's height above the surrounding terrain, add a modest ridge-crest speed-up,
+   then apply the pilot's own per-site correction. */
+function launchWind(s,h,i,altL){
+  const v10=h.wind_speed_10m[i]??0,d10=h.wind_direction_10m[i]??0,g10=h.wind_gusts_10m[i]??v10;
+  const P=s.prom!=null?Math.max(0,s.prom-((s.alt||0)-altL)):null;
+  let u,v,crest=1;
+  if(P==null){ // no terrain info: old behaviour, blend toward free air for high launches
+    const a=toUV(v10,d10);const wL=clamp((altL-200)/900,0,0.6);
+    let lu=a.u,lv=a.v;
+    for(const p of LEVELS){const z=h[`geopotential_height_${p}hPa`][i];if(z!=null&&z>=altL){const b=toUV(h[`wind_speed_${p}hPa`][i]??0,h[`wind_direction_${p}hPa`][i]??0);lu=b.u;lv=b.v;break}}
+    u=a.u*(1-wL)+lu*wL;v=a.v*(1-wL)+lv*wL;
+  }else{
+    const ground=altL-P;const pts=[];
+    const add=(z,ws,wd)=>{if(ws!=null&&wd!=null){const b=toUV(ws,wd);pts.push({z,u:b.u,v:b.v})}};
+    add(10,v10,d10);
+    [80,120,180].forEach(m=>add(m,h[`wind_speed_${m}m`]?.[i],h[`wind_direction_${m}m`]?.[i]));
+    LEVELS.forEach(p=>{const z=h[`geopotential_height_${p}hPa`][i];if(z!=null&&z-ground>200)add(z-ground,h[`wind_speed_${p}hPa`][i],h[`wind_direction_${p}hPa`][i])});
+    pts.sort((a,b)=>a.z-b.z);
+    const hE=Math.max(10,P);u=interp(pts,hE,'u');v=interp(pts,hE,'v');
+    crest=1+0.25*clamp(P/200);
+  }
+  const o=overrides[s.id];const mult=(o&&o.windMult)||1;
+  const w=fromUV(u,v);const ws=w.s*crest*mult;
+  const ratio=clamp(ws/Math.max(v10,4),1,2.2);
+  return {ws,wd:w.d,gust:Math.max(ws,g10*ratio)};
+}
 
 /* physics for one hour at one site */
 function analyzeHour(s,h,i){
@@ -473,14 +532,13 @@ function analyzeHour(s,h,i){
   const T2=h.temperature_2m[i],Td=h.dew_point_2m[i];
   const levels=[];
   for(const p of LEVELS){const z=h[`geopotential_height_${p}hPa`][i],T=h[`temperature_${p}hPa`][i],ws=h[`wind_speed_${p}hPa`][i],wd=h[`wind_direction_${p}hPa`][i];
-    if(z==null||T==null||z<alt+40)continue;const uv=toUV(ws??0,wd??0);levels.push({z,T,u:uv.u,v:uv.v})}
+    if(z==null||T==null||z<alt+40)continue;const uv=toUV(ws??0,wd??0);const rh=h[`relative_humidity_${p}hPa`]?h[`relative_humidity_${p}hPa`][i]:null;
+    levels.push({z,T,Td:rh?dewFromRH(T,rh):null,u:uv.u,v:uv.v})}
   const g=toUV(h.wind_speed_10m[i]??0,h.wind_direction_10m[i]??0);
-  const prof=[{z:alt,T:T2,u:g.u,v:g.v}].concat(levels.sort((a,b)=>a.z-b.z));
-  // wind on launch: blend surface wind with free-air wind at launch height for mountain sites
-  const lvAt={u:interp(prof.length>1?prof.slice(1):prof,alt+30,'u'),v:interp(prof.length>1?prof.slice(1):prof,alt+30,'v')};
-  const wL=clamp((alt-200)/900,0,0.6);
-  const launch=fromUV(g.u*(1-wL)+lvAt.u*wL,g.v*(1-wL)+lvAt.v*wL);
-  const gust=Math.max(h.wind_gusts_10m[i]??launch.s,launch.s);
+  const prof=[{z:alt,T:T2,Td,u:g.u,v:g.v}].concat(levels.sort((a,b)=>a.z-b.z));
+  const lw=launchWind(s,h,i,alt);
+  const launch={s:lw.ws,d:lw.wd};const gust=lw.gust;
+  const others=(s.others||[]).map(L=>Object.assign({name:L.name,alt:L.alt},launchWind(s,h,i,L.alt)));
   const sw=h.shortwave_radiation[i]||0;
   // parcel ascent: surface parcel with a small trigger excess, dry adiabatic
   const trig=0.5+1.5*clamp(sw/800);
@@ -500,7 +558,11 @@ function analyzeHour(s,h,i){
   const climb=Math.max(0,1.6*wstar-1.0); // rough core climb rate for display (not used in the score)
   const lapse=depth>200?(T2-interp(prof,ceiling,'T'))/(depth/1000):null;
   const aloft=fromUV(interp(prof,Math.max(ceiling,alt+300),'u'),interp(prof,Math.max(ceiling,alt+300),'v'));
-  return {T2,Td,sw,top:ceiling,dryTop:top,lcl,cu,depth,wstar,climb,lapse,ws:launch.s,wd:launch.d,gust,aloft,
+  // buoyancy-to-shear: thermal strength vs how much the wind changes through the lift band
+  const lu=toUV(launch.s,launch.d),tu=toUV(aloft.s,aloft.d);
+  const shear=Math.hypot(tu.u-lu.u,tu.v-lu.v)/3.6; // m/s
+  const bsr=depth>150&&wstar>0.3?10*wstar/Math.max(shear,0.5):0;
+  return {snd:prof,trig,bsr,shear,others,T2,Td,sw,top:ceiling,dryTop:top,lcl,cu,depth,wstar,climb,lapse,ws:launch.s,wd:launch.d,gust,aloft,
     cape:h.cape[i]||0,li:h.lifted_index[i]??5,pp:h.precipitation_probability[i]||0,cc:h.cloud_cover[i]||0};
 }
 
@@ -584,6 +646,7 @@ function reasons(s,day){
   if(p.cape>800||p.li<-2)warn.push(`Unstable air (CAPE ${Math.round(p.cape)} J/kg): watch for overdevelopment and storms.`);
   else if(p.cape>400)warn.push(`Some instability (CAPE ${Math.round(p.cape)} J/kg); keep an eye on cloud growth.`);
   if(p.pp>=30)warn.push(`${p.pp}% chance of rain around the best hour.`);
+  if(p.T2-p.Td<=1.7)warn.push(`Fog or low cloud possible at launch: temperature only ${settings.units==='us'?Math.round((p.T2-p.Td)*1.8)+'°F':Math.round(p.T2-p.Td)+'°C'} above the dewpoint around the best hour.`);
   if(!s.dirs)warn.push(`Launch direction unknown, so wind direction wasn\u2019t judged. Tap Edit to set it.`);
   else if(/estimated|please confirm/.test(s.dirSrc||''))warn.push(`Launch directions are ${s.dirSrc.replace(/, please confirm/,'')}. Tap Edit if they\u2019re wrong.`);
   return {out,warn};
@@ -663,21 +726,173 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){const o=[...document.querySelectorAll('.sheet.open')].pop();if(o)closeSheet(o)}});
 
+
+/* ---------- sounding + pilot panels in the detail view ---------- */
+const toDisplayT=c=>settings.units==='us'?c*9/5+32:c;
+const tUnit=()=>settings.units==='us'?'°F':'°C';
+const altToUser=m=>settings.units==='us'?m*FT_PER_M:m;
+const userToAlt=v=>settings.units==='us'?v/FT_PER_M:v;
+function sndRange(s,r){const alt=s.alt||0;const zTop=Math.max(r.top+1000,alt+2200);const maxZ=r.snd[r.snd.length-1].z;return [alt,Math.min(zTop,maxZ)]}
+function windAtZ(r,z){const u=interp(r.snd,z,'u'),v=interp(r.snd,z,'v');return fromUV(u,v)}
+function parcelT(r,z,alt){const base=r.T2+r.trig;const zl=Math.min(r.lcl,z);let T=base-0.0098*(zl-alt);if(z>r.lcl)T-=0.006*(z-r.lcl);return T}
+function soundingSVG(s,r){
+  /* plot area roughly square, like standard soundings */ const W=340,H=290,L=46,R=74,T=12,B=30;const [z0,z1]=sndRange(s,r);const alt=s.alt||0;
+  const pts=r.snd.filter(p=>p.z<=z1+1);
+  const temps=[];pts.forEach(p=>{temps.push(p.T);if(p.Td!=null)temps.push(p.Td)});temps.push(parcelT(r,z0,alt),parcelT(r,z1,alt));
+  let tMin=toDisplayT(Math.min(...temps)),tMax=toDisplayT(Math.max(...temps));const step=settings.units==='us'?10:5;
+  tMin=Math.floor(tMin/step)*step-step;tMax=Math.ceil(tMax/step)*step;
+  const X=c=>L+(toDisplayT(c)-tMin)/(tMax-tMin)*(W-L-R),Y=z=>T+(1-(z-z0)/(z1-z0))*(H-T-B);
+  let g='';
+  // altitude grid
+  const zs=settings.units==='us'?1000/FT_PER_M:300;
+  for(let z=Math.ceil(z0/zs)*zs;z<=z1;z+=zs){g+=`<line x1="${L}" x2="${W-R}" y1="${Y(z)}" y2="${Y(z)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(z)+4}" text-anchor="end" font-size="10" fill="var(--muted)">${settings.units==='us'?Math.round(altToUser(z)/1000)+'k':Math.round(z)}</text>`}
+  for(let t=tMin;t<=tMax;t+=step){const x=L+(t-tMin)/(tMax-tMin)*(W-L-R);g+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" stroke="var(--line)" stroke-dasharray="2 4"/><text x="${x}" y="${H-B+14}" text-anchor="middle" font-size="10" fill="var(--muted)">${t}°</text>`}
+  // lift band
+  if(r.depth>100)g+=`<rect x="${L}" y="${Y(r.top)}" width="${W-L-R}" height="${Y(z0)-Y(r.top)}" fill="var(--good)" opacity=".09"/><line x1="${L}" x2="${W-R}" y1="${Y(r.top)}" y2="${Y(r.top)}" stroke="var(--good)" stroke-width="1.5"/><text x="${L+4}" y="${Y(r.top)-4}" font-size="10" fill="var(--good)">top of lift ${U.altN(r.top)}</text>`;
+  const ul=usableTop(s,r);
+  if(ul&&ul<r.top-30)g+=`<line x1="${L}" x2="${W-R}" y1="${Y(ul)}" y2="${Y(ul)}" stroke="var(--good)" stroke-width="1.3" stroke-dasharray="3 3"/><text x="${L+4}" y="${Math.abs(Y(ul)-Y(r.top))<14?Y(ul)+12:Y(ul)-4}" font-size="10" fill="var(--good)">usable lift ${U.altN(ul)}</text>`;
+  if(r.cu&&r.lcl<z1)g+=`<line x1="${L}" x2="${W-R}" y1="${Y(r.lcl)}" y2="${Y(r.lcl)}" stroke="var(--ink)" stroke-dasharray="5 4" opacity=".7"/><text x="${W-R-4}" y="${Math.abs(Y(r.lcl)-Y(r.top))<16?Y(r.lcl)+12:Y(r.lcl)-4}" text-anchor="end" font-size="10" fill="var(--ink)" opacity=".8">cloudbase ${U.altN(r.lcl)}</text>`;
+  // parcel path
+  let pp='';for(let z=z0;z<=z1;z+=25)pp+=`${pp?'L':'M'}${X(parcelT(r,z,alt)).toFixed(1)},${Y(z).toFixed(1)}`;
+  g+=`<path d="${pp}" fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-dasharray="5 3"/>`;
+  const line=(key,col)=>{const q=pts.filter(p=>p[key]!=null);if(q.length<2)return '';return `<path d="${q.map((p,i)=>`${i?'L':'M'}${X(p[key]).toFixed(1)},${Y(p.z).toFixed(1)}`).join('')}" fill="none" stroke="${col}" stroke-width="2.4" stroke-linejoin="round"/>`};
+  g+=line('Td','var(--cyan)')+line('T','var(--coral)');
+  // wind column
+  for(let z=Math.ceil(z0/zs)*zs;z<=z1;z+=zs){const w=windAtZ(r,z);const cx=W-R+16,cy=Y(z),a=rad(w.d-90),k=8;
+    const x1=cx+k*Math.cos(a),y1=cy+k*Math.sin(a),x2=cx-k*Math.cos(a),y2=cy-k*Math.sin(a);
+    g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--arrow)" stroke-width="2" stroke-linecap="round"/><circle cx="${x2}" cy="${y2}" r="2.2" fill="var(--arrow)"/><text x="${cx+13}" y="${cy+4}" font-size="10" fill="var(--ink)">${Math.round(settings.units==='us'?w.s/KMH_PER_MPH:w.s)}</text>`}
+  g+=`<text x="${W-R+16}" y="${T+2}" text-anchor="middle" font-size="9" fill="var(--muted)">${settings.units==='us'?'mph':'km/h'}</text>`;
+  g+=`<text x="${L}" y="${H-4}" font-size="10" fill="var(--muted)">temperature ${tUnit()}</text><text x="6" y="${T+8}" font-size="9" fill="var(--muted)">${settings.units==='us'?'ft':'m'}</text>`;
+  return `<svg class="snd" viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast sounding at ${hourLabel(r.hr)}">${g}</svg>
+    <p class="hint"><span style="color:var(--coral)">━</span> air temperature &nbsp; <span style="color:var(--cyan)">━</span> dewpoint &nbsp; <span style="color:var(--gold)">┅</span> rising thermal &nbsp; <span style="color:var(--good)">▮</span> lift band, <span style="color:var(--good)">┄</span> top of usable lift. Arrows show wind direction (dot is where it\u2019s blowing to).</p>`;
+}
+// top of usable lift: highest point where the estimated climb is still about 200 fpm (1 m/s)
+function usableTop(s,r){if(r.depth<150||r.climb<1)return null;const x=1-0.25/r.climb;return (s.alt||0)+r.depth*clamp(x,0,1)}
+function instability(s,r){
+  const alt=s.alt||0;const z2=alt+900;const lr=(interp(r.snd,alt,'T')-interp(r.snd,z2,'T'))/0.9; // °C per km in the first ~3,000 ft
+  const lvl=lr>=8.5?{w:'Very unstable',c:'g',d:'Close to the dry rate (9.8°C/km): thermals rise easily and can be strong, punchy or rough.'}
+    :lr>=7?{w:'Unstable',c:'g',d:'Good thermal air: climbs should be steady and workable.'}
+    :lr>=5?{w:'Slightly stable',c:'m',d:'Thermals struggle against the air around them, so expect weak, narrow climbs.'}
+    :lr>=2?{w:'Stable',c:'p',d:'Little thermal activity; mostly a ridge-soaring or sled-ride day.'}
+    :{w:'Inversion',c:'p',d:'Air warms with height here, which acts like a lid: thermals stop at or near launch.'};
+  return Object.assign({lr},lvl);
+}
+function liftShape(x){return x<0.12?0.4+5*x:x<0.75?1:Math.max(0,(1-x)/0.25)}
+function altReadout(s,r,z){
+  const alt=s.alt||0;const w=windAtZ(r,z);const Tz=interp(r.snd,z,'T');const inBand=z<=r.top&&r.depth>100;
+  const x=(z-alt)/Math.max(1,r.depth);const climb=inBand?r.climb*liftShape(x):0;
+  const spread=parcelT(r,z,alt)-Tz;
+  return `<div><b>${U.spd(w.s)} ${dirName(w.d)}</b><span>wind</span></div>
+    <div><b>${inBand?(climb>0.05?U.climb(climb):'weak'):'none'}</b><span>${inBand?'est. climb here':'above top of lift'}</span></div>
+    <div><b>${Math.round(toDisplayT(Tz))}${tUnit()}</b><span>air temperature</span></div>
+    <div><b>${spread>0?'+':''}${(settings.units==='us'?spread*1.8:spread).toFixed(1)}${tUnit()}</b><span>thermal vs. air (positive = still rising)</span></div>`;
+}
+function bsrInfo(r){const v=r.bsr;if(!v)return{txt:'n/a',c:'',word:'No usable thermals'};
+  return v>=7?{txt:v.toFixed(0),c:'g',word:'Thermals hold together'}:v>=5?{txt:v.toFixed(0),c:'m',word:'Some broken, ragged thermals'}:{txt:v.toFixed(1),c:'p',word:'Wind likely tears thermals apart'}}
+function xcInfo(s,d){
+  const rows=d.rows.map(r=>({r,t:scoreHour('thermal',s,r).score}));const best=rows.reduce((a,b)=>(b.t>a.t||(b.t===a.t&&b.r.depth>a.r.depth))?b:a,rows[0]);const r=best.r;
+  const why=[];
+  const good=best.t>=65&&r.depth>=900&&r.bsr>=5&&r.aloft.s<30;
+  const ok=best.t>=40&&r.depth>=500;
+  why.push(`Lift tops out near ${U.altN(r.top)}, ${U.altN(r.depth)} over launch${r.depth>=900?', enough to leave':r.depth>=500?', marginal for going far':', too low to go anywhere'}.`);
+  why.push(`Wind at the top of lift ${U.spd(r.aloft.s)} ${dirName(r.aloft.d)}${r.aloft.s>=30?', strong enough to blow you over the back or break up climbs':r.aloft.s>=18?', a good tailwind if it lines up with your route':', light'}.`);
+  if(r.bsr)why.push(`Buoyancy-to-shear ${bsrInfo(r).txt}: ${bsrInfo(r).word.toLowerCase()}.`);
+  if(r.cu)why.push(`Cumulus marking thermals, base near ${U.altN(r.lcl)}.`);
+  return {level:good?'Good':ok?'Possible':'Poor',c:good?'g':ok?'m':'p',why,hr:r.hr};
+}
+
+/* trigger temperature from the morning sounding */
+function triggerInfo(s,d){
+  const alt=s.alt||0;const m=d.rows.find(r=>r.hr>=7)||d.rows[0];if(!m)return null;
+  const env=z=>interp(m.snd,z,'T');
+  // convective temperature: surface temperature at which a dry thermal reaches its condensation level
+  let tcon=null;for(let T=m.T2;T<=m.T2+25;T+=0.1){const zl=alt+125*Math.max(0,T-m.Td);const Tp=T-0.0098*(zl-alt);if(Tp>=env(zl)){tcon=T;break}}
+  const zt=alt+1000;const need=env(zt)+0.0098*(zt-alt); // to reach ~3,300 ft above launch
+  const hi=d.rows.reduce((a,b)=>b.T2>a.T2?b:a,d.rows[0]);
+  const when=T=>{const r=d.rows.find(x=>x.T2>=T-0.3);return r?hourLabel(r.hr):null};
+  return {tcon,need,hi,whenNeed:when(need),whenCon:tcon!=null?when(tcon):null,morning:m};
+}
+function cloudInfo(d,r){
+  const cuHours=d.rows.filter(x=>x.cu&&x.depth>150);
+  const cape=Math.max(...d.rows.map(x=>x.cape)),li=Math.min(...d.rows.map(x=>x.li)),pp=Math.max(...d.rows.map(x=>x.pp));
+  const od=(cape>800||li<-3)?{w:'High',c:'p'}:(cape>300||li<-1||pp>=40)?{w:'Moderate',c:'m'}:(cape>50&&cuHours.length)?{w:'Low',c:'g'}:{w:'None',c:'g'};
+  return {cuHours,cape,li,pp,od};
+}
+function windShiftInfo(s,d){
+  const rows=d.rows;if(rows.length<4)return null;
+  const base=rows.slice(0,2);const u=base.reduce((a,r)=>a+toUV(r.ws,r.wd).u,0),v=base.reduce((a,r)=>a+toUV(r.ws,r.wd).v,0);const b=fromUV(u/2,v/2);
+  for(let k=2;k<rows.length-1;k++){const r=rows[k],n=rows[k+1];
+    const turned=angDiff(r.wd,b.d)>=60&&angDiff(n.wd,b.d)>=60;const up=r.ws>=b.s+8&&n.ws>=b.s+6;
+    if((turned&&r.ws>=10)||up)return {hr:r.hr,from:b,to:r};}
+  return {hr:null,from:b};
+}
+
+function fogInfo(d,r){
+  const sp=c=>settings.units==='us'?c*1.8:c, u=settings.units==='us'?'°F':'°C';
+  const spread=Math.max(0,r.T2-r.Td);
+  const lvl=spread<=1.1?{w:'High',c:'p'}:spread<=2.2?{w:'Moderate',c:'m'}:{w:'Low',c:'g'};
+  const risky=d.rows.filter(x=>x.T2-x.Td<=2.2);
+  return {spread,lvl,risky,fmt:c=>Math.round(sp(c))+u};
+}
+function renderPilotData(s,d,r){
+  const [z0,z1]=sndRange(s,r);const lo=Math.round(altToUser(z0)/100)*100,hi=Math.round(altToUser(z1)/100)*100;
+  const start=Math.round(altToUser(Math.min(z1,(s.alt||0)+r.depth*0.6||z0))/100)*100;
+  const B=bsrInfo(r),XC=xcInfo(s,d),I=instability(s,r),TR=triggerInfo(s,d),CL=cloudInfo(d,r),WS=windShiftInfo(s,d),FG=fogInfo(d,r);
+  const tF=c=>Math.round(toDisplayT(c))+tUnit();
+  $('#snd').innerHTML=`<div class="panel"><h3>Sounding, ${hourLabel(r.hr)}</h3><p class="hint">Tap any hour in the table to see its sounding.</p>${soundingSVG(s,r)}</div>
+  <details class="xc" open><summary>Winds and lift by altitude</summary><div class="in">
+    <div class="altrow"><input type="range" id="altR" min="${lo}" max="${hi}" step="100" value="${start}" aria-label="Altitude"><input type="number" id="altN" min="${lo}" max="${hi}" step="100" value="${start}" aria-label="Altitude in ${settings.units==='us'?'feet':'metres'}"></div>
+    <div class="readout" id="altOut">${altReadout(s,r,userToAlt(start))}</div>
+    <p class="what">Drag or type an altitude (${settings.units==='us'?'feet':'metres'} above sea level) to see the forecast wind and lift there at ${hourLabel(r.hr)}. Wind that turns or gets much stronger above launch can make the air rough, and \u201cthermal vs. air\u201d shows how much warmer a rising thermal is than the air around it: the bigger the number, the stronger it keeps climbing, and once it reaches zero the climb stops.</p></div></details>
+  <details class="xc"><summary>Instability and lapse rate <span class="val ${I.c}">${settings.units==='us'?(I.lr*0.5486).toFixed(1)+'°F/1k ft':I.lr.toFixed(1)+'°C/km'}</span></summary><div class="in">
+    <p style="margin:0 0 6px"><strong class="${I.c}">${I.w}.</strong></p>
+    <p style="margin:0">Air ${I.lr>=0?'cools':'warms'} about ${settings.units==='us'?Math.abs(I.lr*0.5486).toFixed(1)+'°F per 1,000 ft':Math.abs(I.lr).toFixed(1)+'°C per km'} in the first 3,000 ft above launch at ${hourLabel(r.hr)}. ${esc(I.d)}${r.cape>500?` CAPE is ${Math.round(r.cape)} J/kg, so clouds could grow tall: watch for overdevelopment.`:''}</p>
+    <p style="margin:6px 0 0">${usableTop(s,r)?`Top of usable lift is about ${U.altN(usableTop(s,r))}, with thermals topping out near ${U.altN(r.top)}.`:r.depth>150?`Climbs look too weak (under 200 fpm) for much usable lift, even though thermals reach about ${U.altN(r.top)}.`:'No usable lift above launch.'}</p>
+    <p class="what">Instability is how quickly the air cools as you go up. A rising thermal cools at a fixed rate (about ${settings.units==='us'?'5.4°F per 1,000 ft':'9.8°C per km'}); when the surrounding air cools nearly that fast, the thermal stays warmer than its surroundings and keeps rising, which is what powers good climbs. When the air cools slowly, or warms with height (an inversion), thermals lose their push and stall. Top of usable lift is where climbs drop below about 200 fpm, usually a bit below the very top of the thermals, and is the practical ceiling for planning glides.</p></div></details>
+  ${TR?`<details class="xc"><summary>Trigger temperature <span class="val ${TR.tcon!=null?'':'p'}">${TR.tcon!=null?tF(TR.tcon):'too stable'}</span></summary><div class="in">
+    <p style="margin:0 0 6px">${TR.tcon!=null?`Once the ground air reaches about ${tF(TR.tcon)}, thermals should rise all the way to cloudbase and start building cumulus${TR.whenCon?`, forecast around ${TR.whenCon}`:`, which the forecast high of ${tF(TR.hi.T2)} doesn\u2019t reach, so expect blue thermals`}.`:'Too stable today: even a very warm afternoon wouldn\u2019t push thermals up to cloud level.'}</p>
+    <p style="margin:0 0 6px">To reach about ${U.altN(TR.morning?((s.alt||0)+1000):0)} (3,300 ft over launch) it needs roughly ${tF(TR.need)}${TR.whenNeed?`, forecast around ${TR.whenNeed}`:', which it doesn\u2019t reach today'}. Forecast high ${tF(TR.hi.T2)} around ${hourLabel(TR.hi.hr)}.</p>
+    <p class="what">Thermals only start once the sun heats the ground air enough to be warmer than the air above it. The trigger temperature (\u201ctcon\u201d on Windy and other soundings) is the surface temperature needed for thermals to climb all the way to cloud level. Comparing it with the forecast temperature tells you roughly when the day will \u201cturn on\u201d, which is why pilots often wait on launch until it\u2019s warm enough. It\u2019s worked out from the ${hourLabel(TR.morning.hr)} forecast sounding.</p></div></details>`:''}
+  <details class="xc"><summary>Buoyancy-to-shear ratio <span class="val ${B.c}">${B.txt}</span></summary><div class="in">
+    <p style="margin:0">${esc(B.word)} at ${hourLabel(r.hr)}. Thermal strength about ${(r.wstar*196.85/10|0)*10} fpm versus a wind change of ${U.spd(r.shear*3.6)} between launch and the top of lift.</p>
+    <p class="what">Thermals are columns of rising air, and wind that changes speed or direction with height (shear) tilts and shreds them. This ratio compares how strong the thermals are with how much shear they face. About 7 or more usually means smooth, consolidated climbs; 5 to 7 means workable but ragged; under 5 means the wind tends to rip thermals apart, so climbs feel turbulent and hard to center. It works on the same idea as XC Skies\u2019 version, though the numbers won\u2019t match theirs exactly.</p></div></details>
+  <details class="xc"><summary>Clouds and overdevelopment <span class="val ${CL.od.c}">${CL.cuHours.length?'Cu':'Blue'}, OD ${CL.od.w.toLowerCase()}</span></summary><div class="in">
+    <p style="margin:0 0 6px">${CL.cuHours.length?`Cumulus likely from about ${hourLabel(CL.cuHours[0].hr)} to ${hourLabel(CL.cuHours[CL.cuHours.length-1].hr+1)}, with bases near ${U.altN(Math.min(...CL.cuHours.map(x=>x.lcl)))} to ${U.altN(Math.max(...CL.cuHours.map(x=>x.lcl)))}.`:'Thermals probably stay blue (no cumulus), so you\u2019ll have to find them without clouds marking the way.'}</p>
+    <p style="margin:0 0 6px">Overdevelopment risk ${CL.od.w.toLowerCase()}: peak CAPE ${Math.round(CL.cape)} J/kg${CL.pp?`, up to ${CL.pp}% chance of rain`:''}.</p>
+    <p class="what">Cumulus clouds form when thermals rise high enough to condense, so they act like signposts for lift and their base is often the practical ceiling. Overdevelopment (OD) is when those clouds keep growing into towering cumulus or thunderstorms, bringing strong gust fronts, cloud suck and rain. CAPE measures the energy available for that growth: under about 300 is usually fine, 300 to 800 means watch the sky, and over 800 means storms are a real risk.</p></div></details>
+  <details class="xc"><summary>Fog and low clouds (T\u2013Td) <span class="val ${FG.lvl.c}">${FG.fmt(FG.spread)}</span></summary><div class="in">
+    <p style="margin:0 0 6px"><strong class="${FG.lvl.c}">${FG.lvl.w} risk</strong> at ${hourLabel(r.hr)}: temperature ${tF(r.T2)}, dewpoint ${tF(r.Td)}, a gap of ${FG.fmt(FG.spread)}.</p>
+    <p style="margin:0 0 6px">${FG.risky.length?`The gap is ${settings.units==='us'?'4°F':'2°C'} or less around ${FG.risky.length>3?`${hourLabel(FG.risky[0].hr)} to ${hourLabel(FG.risky[FG.risky.length-1].hr+1)}`:FG.risky.map(x=>hourLabel(x.hr)).join(', ')}, so watch for fog or low cloud at launch then.`:'No hours today with a gap small enough for fog at launch.'}</p>
+    <p class="what">T\u2013Td is the gap between the air temperature and the dewpoint (the temperature at which moisture condenses). The smaller the gap, the closer the air is to forming cloud right where you are: about ${settings.units==='us'?'2°F':'1°C'} or less often means fog or a low stratus deck, up to ${settings.units==='us'?'4°F':'2°C'} means it\u2019s possible, especially at coastal sites and on marine-layer mornings. A bigger gap also means a higher cloudbase, roughly ${settings.units==='us'?'230 ft for every 1°F':'125 m for every 1°C'} of gap. This uses the forecast at launch height, so fog sitting in the valley below can still happen when this reads low.</p></div></details>
+  ${WS?`<details class="xc"><summary>Wind shift and sea breeze <span class="val ${WS.hr?'m':'g'}">${WS.hr?`around ${hourLabel(WS.hr)}`:'none expected'}</span></summary><div class="in">
+    <p style="margin:0 0 6px">${WS.hr?`Morning wind about ${U.spd(WS.from.s)} ${dirName(WS.from.d)} changes to ${U.spd(WS.to.ws)} ${dirName(WS.to.wd)} around ${hourLabel(WS.hr)}.`:`Wind stays fairly steady near ${U.spd(WS.from.s)} ${dirName(WS.from.d)} through the day, with no strong shift forecast.`}</p>
+    <p class="what">In coastal areas like the Bay, the cooler ocean air (sea breeze) pushes inland during the afternoon, usually as a clear shift in direction and a jump in speed. Where it meets warmer inland air it can create a line of lift (a convergence line), but behind it the air is cool and stable, so thermals often shut down and launches can get blown out. Knowing when it arrives helps you plan when to launch and when to be on the ground. This is a simple read of the hourly wind at this launch, not a map of the convergence line.</p></div></details>`:''}
+  <details class="xc"><summary>XC potential <span class="val ${XC.c}">${XC.level}</span></summary><div class="in">
+    <p style="margin:0 0 6px">Best thermal hour around ${hourLabel(XC.hr)}.</p>${XC.why.map(w=>`<p style="margin:0 0 6px">${esc(w)}</p>`).join('')}
+    <p class="what">A quick read on whether this is a day to go cross-country rather than just fly locally. It rates the whole day as Good, Possible or Poor from top of lift, wind at altitude and buoyancy-to-shear. When we replayed two years of archived forecasts, days rated well here lined up with most of the logged XC days at Ed Levin and Blue Rock, but always read the sounding yourself and check with local pilots.</p></div></details>`;
+  const R=$('#altR'),N=$('#altN');
+  const upd=v=>{v=clamp(+v||lo,lo,hi);R.value=v;$('#altOut').innerHTML=altReadout(s,r,userToAlt(v))};
+  R.oninput=()=>{N.value=R.value;upd(R.value)};N.onchange=()=>upd(N.value);
+}
+
 function showDetail(id){
   const s=SITES.find(x=>x.id===id);if(!s)return;const d=s.days[curDay];
   $('#dTitle').textContent=s.name;
   $('#dScore').className='score '+cls(d.score);$('#dScore').innerHTML=`${disp(d.score)}<small>${word(d.score)}</small>`;
   const R=reasons(s,d);
-  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr><td>${hourLabel(r.hr)}</td><td>${dirName(r.wd)}</td><td>${U.spd(r.ws)}</td><td>${U.spd(r.gust)}</td><td class="sc ${cls(v)}">${disp(v)}</td><td>${r.depth>100?U.altN(r.top):'–'}</td><td>${r.climb>0.05?U.climb(r.climb):'–'}</td><td>${r.cu?U.altN(r.lcl):'blue'}</td></tr>`}).join('');
+  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr data-hr="${r.hr}" class="${r===d.peak?'sel':''}"><td>${hourLabel(r.hr)}</td><td>${dirName(r.wd)}</td><td>${U.spd(r.ws)}</td><td>${U.spd(r.gust)}</td><td class="sc ${cls(v)}">${disp(v)}</td></tr>`}).join('');
   const other=s.types.filter(t=>t!==d.type).map(t=>{const v=d.rows.map(r=>r.scores[t]);return `${TYPE_LABEL[t]} peaks at ${disp(Math.max(...v))} out of 10`}).join('. ');
   const bb=[s.lon-0.04,s.lat-0.025,s.lon+0.04,s.lat+0.025].map(x=>x.toFixed(4)).join('%2C');
   $('#dBody').innerHTML=`
     <p><strong>${TYPE_LABEL[d.type]}${d.win?`, ${hourLabel(d.win[0])}–${hourLabel(d.win[1])}`:''}</strong></p>
     ${R.out.map(x=>`<p>${esc(x)}</p>`).join('')}
     ${R.warn.map(x=>`<div class="warn">${esc(x)}</div>`).join('')}
+    ${(d.peak.others||[]).map(o=>`<p class="small">${esc(o.name)} (${U.altN(o.alt)}): about ${U.spd(o.ws)} ${dirName(o.wd)}, gusts ${U.spd(o.gust)} at the best hour, versus ${U.spd(d.peak.ws)} up top.</p>`).join('')}
     ${other?`<p class="small">${esc(other)}.</p>`:''}
     <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${dial(s,d.peak.wd,d.peak.ws,88)}<p class="small" style="margin:0">Shaded wedges are the wind directions this launch works in (darker is better). The arrow is the forecast wind at the best hour.</p></div>
-    <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th><th>Lift top</th><th>Climb</th><th>Cloudbase</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    <div class="panel"><h3>Hourly forecast</h3></div>
+    <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th></tr></thead><tbody id="hrRows">${rowsHtml}</tbody></table></div>
+    <div id="snd"></div>
     <iframe class="mapframe" loading="lazy" title="Map of ${esc(s.name)}" src="https://www.openstreetmap.org/export/embed.html?bbox=${bb}&layer=mapnik&marker=${s.lat}%2C${s.lon}"></iframe>
     <div class="links">
       <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">Directions</a>
@@ -698,6 +913,9 @@ function showDetail(id){
     <p class="small">Always check live wind, the site guide and local pilots before flying. This is a model-based estimate.</p>
     <button class="btn primary" id="editBtn">Edit this site</button>`;
   $('#editBtn').onclick=()=>showEditor(s);
+  renderPilotData(s,d,d.peak);
+  $('#hrRows').onclick=e=>{const tr=e.target.closest('tr[data-hr]');if(!tr)return;const r=d.rows.find(x=>x.hr==tr.dataset.hr);
+    $('#hrRows').querySelectorAll('tr').forEach(x=>x.classList.toggle('sel',x===tr));renderPilotData(s,d,r)};
   openSheet('#detail');$('#detail').scrollTop=0;
 }
 
@@ -709,12 +927,14 @@ function showEditor(s){
     body.innerHTML=`<p class="small">Tap a direction to cycle: off, workable, good. Saved on this phone right away.</p>
       <div class="compass">${DIRS.map((d,i)=>`<button data-i="${i}" data-r="${arr[i]}" aria-label="${d} ${['off','workable','good'][arr[i]]}">${d}</button>`).join('')}</div>
       <div class="chips" style="margin:14px 0">${['thermal','ridge','coastal'].map(t=>`<button class="chip" data-t="${t}" aria-pressed="${types.includes(t)}">${TYPE_LABEL[t]}</button>`).join('')}</div>
+      <label class="field"><span>Wind here compared with the forecast</span><select id="eMult">${[[0.7,'Usually 30% lighter'],[0.85,'Usually 15% lighter'],[1,'About as forecast'],[1.2,'Usually 20% stronger'],[1.4,'Usually 40% stronger'],[1.6,'Usually 60% stronger']].map(([v,l])=>`<option value="${v}" ${(o.windMult||1)==v?'selected':''}>${l}</option>`).join('')}</select></label>
       <label class="field"><span>Your note</span><input type="text" id="eNote" value="${esc(o.note||'')}"></label>
       <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="eHide" ${o.hidden?'checked':''}> Hide this site</label>
       <div class="status actions" style="padding:0"><button class="btn primary" id="eSave">Save changes</button><button class="btn" id="eReset">Reset to original</button></div>`;
     body.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;arr[i]=(arr[i]+1)%3;draw()});
     body.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const t=b.dataset.t;types=types.includes(t)?types.filter(x=>x!==t):types.concat(t);if(!types.length)types=[t];draw()});
-    $('#eSave').onclick=()=>{overrides[s.id]={name:s.name,dirs:arr.some(x=>x)?arr:null,types,note:$('#eNote').value.trim(),hidden:$('#eHide').checked};
+    $('#eSave').onclick=()=>{overrides[s.id]={name:s.name,dirs:arr.some(x=>x)?arr:null,types,note:$('#eNote').value.trim(),hidden:$('#eHide').checked,windMult:+$('#eMult').value};
+      if(overrides[s.id].windMult===1)delete overrides[s.id].windMult;
       if(!overrides[s.id].dirs)delete overrides[s.id].dirs;store.set('overrides',overrides);toast('Saved');closeSheet($('#editor'));closeSheet($('#detail'));load(false)};
     $('#eReset').onclick=()=>{delete overrides[s.id];store.set('overrides',overrides);toast('Reset');closeSheet($('#editor'));closeSheet($('#detail'));load(false)};
   };
