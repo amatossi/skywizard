@@ -160,6 +160,8 @@ details.xc .what{font-size:.88rem;color:var(--muted);border-top:1px solid var(--
 .readout div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 .readout b{display:block;font-family:Fredoka,sans-serif;font-weight:600;font-size:1.15rem}
 .readout span{font-size:.75rem;color:var(--muted)}
+.star{color:var(--gold);font-weight:800;margin-left:1px}
+.adj{display:inline-block;margin-left:8px;padding:0 8px;border-radius:999px;font-size:.72rem;font-weight:700;line-height:1.6;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 55%,transparent);vertical-align:1px}
 </style>
 </head>
 <body>
@@ -678,8 +680,11 @@ function strip(day){
   const hrs=[];for(let hr=8;hr<=19;hr++){const n=hr>12?hr-12:hr;hrs.push(hr===12?'<b>12</b>':`<span>${n}${hr===8?'a':hr===13?'p':''}</span>`)}
   return `<div class="strip" aria-hidden="true">${cells.join('')}</div><div class="striphours" aria-hidden="true">${hrs.join('')}</div>`;
 }
+const windMult=s=>{const o=overrides[s.id];return (o&&o.windMult)||1};
+const adjTag=s=>{const m=windMult(s);return m===1?'':`<span class="adj" title="Your wind correction">${m>1?'+':'\u2212'}${Math.round(Math.abs(m-1)*100)}% wind</span>`};
+const star=s=>windMult(s)===1?'':'<span class="star">*</span>';
 function facts(s,day){
-  const p=day.peak;const f=[`<span>${U.spd(p.ws)} ${dirName(p.wd)}${p.gust-p.ws>10?`, gusts ${U.spd(p.gust)}`:''}</span>`];
+  const p=day.peak;const f=[`<span>${U.spd(p.ws)}${star(s)} ${dirName(p.wd)}${p.gust-p.ws>10?`, gusts ${U.spd(p.gust)}${star(s)}`:''}</span>`];
   if(day.type==='thermal'||p.climb>0.5)f.push(`<span>top ${U.altN(p.top)}</span>`,`<span>${p.climb>=0.1?U.climb(p.climb)+' climbs':'weak lift'}</span>`);
   f.push(`<span>${Math.round(s.km)} km away</span>`);return f.join('');
 }
@@ -698,7 +703,7 @@ function render(){
       const R=reasons(s,d);
       html+=`<button class="site best" data-id="${esc(s.id)}">
         <div>${dial(s,p.wd,p.ws,72)}</div>
-        <div><div class="name">${esc(s.name)}</div><div class="sub">${TYPE_LABEL[d.type]}, ${win}</div></div>
+        <div><div class="name">${esc(s.name)}</div><div class="sub">${TYPE_LABEL[d.type]}, ${win}${adjTag(s)}</div></div>
         <div class="score ${cls(d.score)}">${disp(d.score)}<small>${word(d.score)}</small></div>
         <p class="why">${esc(R.out[0])}</p>
         <div class="facts" style="grid-column:1/4">${facts(s,d)}</div>
@@ -707,7 +712,7 @@ function render(){
     }else{
       html+=`<button class="site" data-id="${esc(s.id)}">
         <div>${dial(s,p.wd,p.ws)}</div>
-        <div><div class="name">${esc(s.name)}</div><div class="sub">${TYPE_LABEL[d.type]}, ${win}</div></div>
+        <div><div class="name">${esc(s.name)}</div><div class="sub">${TYPE_LABEL[d.type]}, ${win}${adjTag(s)}</div></div>
         <div class="score ${cls(d.score)}">${disp(d.score)}<small>${word(d.score)}</small></div>
         <div class="facts">${facts(s,d)}</div>
         <div style="grid-column:2/4">${strip(d)}</div></button>`;
@@ -880,7 +885,7 @@ function showDetail(id){
   $('#dTitle').textContent=s.name;
   $('#dScore').className='score '+cls(d.score);$('#dScore').innerHTML=`${disp(d.score)}<small>${word(d.score)}</small>`;
   const R=reasons(s,d);
-  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr data-hr="${r.hr}" class="${r===d.peak?'sel':''}"><td>${hourLabel(r.hr)}</td><td>${dirName(r.wd)}</td><td>${U.spd(r.ws)}</td><td>${U.spd(r.gust)}</td><td class="sc ${cls(v)}">${disp(v)}</td></tr>`}).join('');
+  const rowsHtml=d.rows.map(r=>{const v=Math.round(r.scores[d.type]);return `<tr data-hr="${r.hr}" class="${r===d.peak?'sel':''}"><td>${hourLabel(r.hr)}</td><td>${dirName(r.wd)}</td><td>${U.spd(r.ws)}${star(s)}</td><td>${U.spd(r.gust)}${star(s)}</td><td class="sc ${cls(v)}">${disp(v)}</td></tr>`}).join('');
   const other=s.types.filter(t=>t!==d.type).map(t=>{const v=d.rows.map(r=>r.scores[t]);return `${TYPE_LABEL[t]} peaks at ${disp(Math.max(...v))} out of 10`}).join('. ');
   const bb=[s.lon-0.04,s.lat-0.025,s.lon+0.04,s.lat+0.025].map(x=>x.toFixed(4)).join('%2C');
   $('#dBody').innerHTML=`
@@ -892,6 +897,7 @@ function showDetail(id){
     <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${dial(s,d.peak.wd,d.peak.ws,88)}<p class="small" style="margin:0">Shaded wedges are the wind directions this launch works in (darker is better). The arrow is the forecast wind at the best hour.</p></div>
     <div class="panel"><h3>Hourly forecast</h3></div>
     <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th></tr></thead><tbody id="hrRows">${rowsHtml}</tbody></table></div>
+    ${windMult(s)!==1?`<p class="hint"><span class="star">*</span> Includes your ${windMult(s)>1?'+':'\u2212'}${Math.round(Math.abs(windMult(s)-1)*100)}% wind correction for this site. Raw forecast at the best hour: ${U.spd(d.peak.ws/windMult(s))}, gusts ${U.spd(d.peak.gust/windMult(s))}. Change it under Edit this site.</p>`:''}
     <div id="snd"></div>
     <iframe class="mapframe" loading="lazy" title="Map of ${esc(s.name)}" src="https://www.openstreetmap.org/export/embed.html?bbox=${bb}&layer=mapnik&marker=${s.lat}%2C${s.lon}"></iframe>
     <div class="links">
