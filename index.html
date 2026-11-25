@@ -267,8 +267,9 @@ const store={
   get(k,d){try{const v=localStorage.getItem('lift.'+k);return v!=null?JSON.parse(v):(k in mem?mem[k]:d)}catch(e){return k in mem?mem[k]:d}},
   set(k,v){mem[k]=v;try{localStorage.setItem('lift.'+k,JSON.stringify(v))}catch(e){}}
 };
-let settings=Object.assign({radiusKm:150,units:'us',maxSites:45,loc:null},store.get('settings',{}));
-let overrides=store.get('overrides',{});   // id -> {dirs, types, hidden, note}
+let settings=Object.assign({radiusKm:100*1.609344,units:'us',maxSites:45,loc:null},store.get('settings',{}));
+let overrides=store.get('overrides',{});
+// overrides: id -> {dirs, types, hidden, note, windMult}
 let customSites=store.get('custom',[]);
 const saveSettings=()=>store.set('settings',settings);
 
@@ -292,6 +293,7 @@ async function fetchText(url,ms=12000){
   const r=await withTimeout(fetch(url),ms);if(!r.ok)throw new Error('HTTP '+r.status);return await withTimeout(r.text(),ms);
 }
 const U={
+  dist:k=>settings.units==='us'?Math.round(k/1.609344)+' mi':Math.round(k)+' km',
   spd:k=>settings.units==='us'?Math.round(k/KMH_PER_MPH)+' mph':Math.round(k)+' km/h',
   alt:m=>settings.units==='us'?Math.round(m*FT_PER_M/100)*100+' ft':Math.round(m/10)*10+' m',
   altN:m=>settings.units==='us'?(Math.round(m*FT_PER_M/100)*100).toLocaleString()+' ft':(Math.round(m/10)*10).toLocaleString()+' m',
@@ -499,33 +501,16 @@ const dewFromRH=(T,rh)=>{const a=17.62,b=243.12,g=Math.log(Math.max(rh,1)/100)+a
 const toUV=(s,d)=>({u:-s*Math.sin(rad(d)),v:-s*Math.cos(rad(d))});
 const fromUV=(u,v)=>({s:Math.hypot(u,v),d:(deg(Math.atan2(-u,-v))+360)%360});
 
-/* Wind at a launch. The model's 10 m wind sits over smoothed terrain, so a launch that sticks up
-   above its surroundings sees stronger wind. We read the wind profile (10/80/120/180 m, then upper
-   levels) at the launch's height above the surrounding terrain, add a modest ridge-crest speed-up,
-   then apply the pilot's own per-site correction. */
-function launchWind(s,h,i,altL){
+/* Wind at a launch: the plain model forecast (10 m wind, blended toward the free-air wind for
+   high mountain launches). The only adjustment is a pilot's own per-site percentage, if set. */
+function launchWind(s,h,i,altL,mult=1){
   const v10=h.wind_speed_10m[i]??0,d10=h.wind_direction_10m[i]??0,g10=h.wind_gusts_10m[i]??v10;
-  const P=s.prom!=null?Math.max(0,s.prom-((s.alt||0)-altL)):null;
-  let u,v,crest=1;
-  if(P==null){ // no terrain info: old behaviour, blend toward free air for high launches
-    const a=toUV(v10,d10);const wL=clamp((altL-200)/900,0,0.6);
-    let lu=a.u,lv=a.v;
-    for(const p of LEVELS){const z=h[`geopotential_height_${p}hPa`][i];if(z!=null&&z>=altL){const b=toUV(h[`wind_speed_${p}hPa`][i]??0,h[`wind_direction_${p}hPa`][i]??0);lu=b.u;lv=b.v;break}}
-    u=a.u*(1-wL)+lu*wL;v=a.v*(1-wL)+lv*wL;
-  }else{
-    const ground=altL-P;const pts=[];
-    const add=(z,ws,wd)=>{if(ws!=null&&wd!=null){const b=toUV(ws,wd);pts.push({z,u:b.u,v:b.v})}};
-    add(10,v10,d10);
-    [80,120,180].forEach(m=>add(m,h[`wind_speed_${m}m`]?.[i],h[`wind_direction_${m}m`]?.[i]));
-    LEVELS.forEach(p=>{const z=h[`geopotential_height_${p}hPa`][i];if(z!=null&&z-ground>200)add(z-ground,h[`wind_speed_${p}hPa`][i],h[`wind_direction_${p}hPa`][i])});
-    pts.sort((a,b)=>a.z-b.z);
-    const hE=Math.max(10,P);u=interp(pts,hE,'u');v=interp(pts,hE,'v');
-    crest=1+0.25*clamp(P/200);
-  }
-  const o=overrides[s.id];const mult=(o&&o.windMult)||1;
-  const w=fromUV(u,v);const ws=w.s*crest*mult;
-  const ratio=clamp(ws/Math.max(v10,4),1,2.2);
-  return {ws,wd:w.d,gust:Math.max(ws,g10*ratio)};
+  const a=toUV(v10,d10);const wL=clamp((altL-200)/900,0,0.6);
+  let lu=a.u,lv=a.v;
+  for(const p of LEVELS){const z=h[`geopotential_height_${p}hPa`][i];if(z!=null&&z>=altL+30){const b=toUV(h[`wind_speed_${p}hPa`][i]??0,h[`wind_direction_${p}hPa`][i]??0);lu=b.u;lv=b.v;break}}
+  const w=fromUV(a.u*(1-wL)+lu*wL,a.v*(1-wL)+lv*wL);
+  const gust=Math.max(w.s,g10*Math.min(2,Math.max(1,w.s/Math.max(v10,1))));
+  return {ws:w.s*mult,wd:w.d,gust:gust*mult};
 }
 
 /* physics for one hour at one site */
@@ -538,9 +523,10 @@ function analyzeHour(s,h,i){
     levels.push({z,T,Td:rh?dewFromRH(T,rh):null,u:uv.u,v:uv.v})}
   const g=toUV(h.wind_speed_10m[i]??0,h.wind_direction_10m[i]??0);
   const prof=[{z:alt,T:T2,Td,u:g.u,v:g.v}].concat(levels.sort((a,b)=>a.z-b.z));
-  const lw=launchWind(s,h,i,alt);
+  const mult=windMult(s);const lw=launchWind(s,h,i,alt,mult);
   const launch={s:lw.ws,d:lw.wd};const gust=lw.gust;
-  const others=(s.others||[]).map(L=>Object.assign({name:L.name,alt:L.alt},launchWind(s,h,i,L.alt)));
+  const raw=mult!==1?launchWind(s,h,i,alt,1):null;
+  const others=(s.others||[]).map(L=>Object.assign({name:L.name,alt:L.alt},launchWind(s,h,i,L.alt,mult)));
   const sw=h.shortwave_radiation[i]||0;
   // parcel ascent: surface parcel with a small trigger excess, dry adiabatic
   const trig=0.5+1.5*clamp(sw/800);
@@ -564,7 +550,7 @@ function analyzeHour(s,h,i){
   const lu=toUV(launch.s,launch.d),tu=toUV(aloft.s,aloft.d);
   const shear=Math.hypot(tu.u-lu.u,tu.v-lu.v)/3.6; // m/s
   const bsr=depth>150&&wstar>0.3?10*wstar/Math.max(shear,0.5):0;
-  return {snd:prof,trig,bsr,shear,others,T2,Td,sw,top:ceiling,dryTop:top,lcl,cu,depth,wstar,climb,lapse,ws:launch.s,wd:launch.d,gust,aloft,
+  return {raw,snd:prof,trig,bsr,shear,others,T2,Td,sw,top:ceiling,dryTop:top,lcl,cu,depth,wstar,climb,lapse,ws:launch.s,wd:launch.d,gust,aloft,
     cape:h.cape[i]||0,li:h.lifted_index[i]??5,pp:h.precipitation_probability[i]||0,cc:h.cloud_cover[i]||0};
 }
 
@@ -610,7 +596,7 @@ function analyzeSite(s){
   const conf=!s.dirs?0.7:/estimated/.test(s.dirSrc||'')?0.85:1;
   for(const[d,hours]of Object.entries(days)){
     const fly=hours.filter(x=>x.hr>=7&&x.hr<=20&&h.is_day[x.i]===1);
-    const rows=fly.map(x=>{const a=analyzeHour(s,h,x.i);a.hr=x.hr;a.scores={};s.types.forEach(t=>a.scores[t]=scoreHour(t,s,a).score*conf);a.best=Math.max(...Object.values(a.scores));return a});
+    const rows=fly.map(x=>{const a=analyzeHour(s,h,x.i);a.hr=x.hr;a.scores={};s.types.forEach(t=>a.scores[t]=scoreHour(t,s,a).score*conf);if(a.raw){const ar=Object.assign({},a,{ws:a.raw.ws,wd:a.raw.wd,gust:a.raw.gust});a.rawScores={};s.types.forEach(t=>a.rawScores[t]=scoreHour(t,s,ar).score*conf)}a.best=Math.max(...Object.values(a.scores));return a});
     let bestType=null,bestVal=-1,bestPeak=null;
     for(const t of s.types){
       const v=rows.map(r=>r.scores[t]);let b=-1,bi=0;
@@ -681,12 +667,12 @@ function strip(day){
   return `<div class="strip" aria-hidden="true">${cells.join('')}</div><div class="striphours" aria-hidden="true">${hrs.join('')}</div>`;
 }
 const windMult=s=>{const o=overrides[s.id];return (o&&o.windMult)||1};
-const adjTag=s=>{const m=windMult(s);return m===1?'':`<span class="adj" title="Your wind correction">${m>1?'+':'\u2212'}${Math.round(Math.abs(m-1)*100)}% wind</span>`};
+const adjTag=s=>{const m=windMult(s);return m===1?'':`<span class="adj" title="Your site adjustment">${m>1?'+':'\u2212'}${Math.round(Math.abs(m-1)*100)}% your adjustment</span>`};
 const star=s=>windMult(s)===1?'':'<span class="star">*</span>';
 function facts(s,day){
   const p=day.peak;const f=[`<span>${U.spd(p.ws)}${star(s)} ${dirName(p.wd)}${p.gust-p.ws>10?`, gusts ${U.spd(p.gust)}${star(s)}`:''}</span>`];
   if(day.type==='thermal'||p.climb>0.5)f.push(`<span>top ${U.altN(p.top)}</span>`,`<span>${p.climb>=0.1?U.climb(p.climb)+' climbs':'weak lift'}</span>`);
-  f.push(`<span>${Math.round(s.km)} km away</span>`);return f.join('');
+  f.push(`<span>${U.dist(s.km)} away</span>`);return f.join('');
 }
 
 function render(){
@@ -694,7 +680,7 @@ function render(){
   const days=$('#days');
   days.innerHTML=DAYKEYS.map((d,i)=>{const dt=new Date(d+'T12:00');const lbl=i===0?'Today':i===1?'Tomorrow':dt.toLocaleDateString(undefined,{weekday:'short'});
     return `<button class="day" aria-pressed="${d===curDay}" data-day="${d}">${lbl}</button>`}).join('');
-  if(!SITES.length){main.innerHTML=`<div class="status"><h2>No sites found</h2><p>Nothing within ${settings.radiusKm} km. Try a bigger radius or another place.</p><div class="actions"><button class="btn primary" data-open-settings>Change location or radius</button></div></div>`;return}
+  if(!SITES.length){main.innerHTML=`<div class="status"><h2>No sites found</h2><p>Nothing within ${U.dist(settings.radiusKm)}. Try a bigger radius or another place.</p><div class="actions"><button class="btn primary" data-open-settings>Change location or radius</button></div></div>`;return}
   const ranked=SITES.filter(s=>s.days&&s.days[curDay]).sort((a,b)=>b.days[curDay].score-a.days[curDay].score);
   let html='';
   ranked.forEach((s,idx)=>{
@@ -880,6 +866,13 @@ function renderPilotData(s,d,r){
   R.oninput=()=>{N.value=R.value;upd(R.value)};N.onchange=()=>upd(N.value);
 }
 
+function origTable(s,d){
+  const rows=d.rows.filter(r=>r.raw);if(!rows.length)return '';
+  const v=rows.map(r=>r.rawScores[d.type]);let best=0;for(let k=0;k<v.length;k++){const w=v.slice(Math.max(0,k-1),k+2);best=Math.max(best,w.reduce((p,c)=>p+c,0)/w.length)}
+  return `<details class="xc"><summary>Original forecast <span class="val ${cls(best)}">${disp(best)}</span></summary><div class="in">
+    <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th></tr></thead><tbody>${rows.map(r=>{const x=r.rawScores[d.type];return `<tr><td>${hourLabel(r.hr)}</td><td>${dirName(r.raw.wd)}</td><td>${U.spd(r.raw.ws)}</td><td>${U.spd(r.raw.gust)}</td><td class="sc ${cls(x)}">${disp(x)}</td></tr>`}).join('')}</tbody></table></div>
+    <p class="what">This is the standard forecast for this site before your adjustment, the same numbers anyone else using SkyWizard sees. Compare it with what you actually feel on launch to fine-tune your percentage under Edit this site.</p></div></details>`;
+}
 function showDetail(id){
   const s=SITES.find(x=>x.id===id);if(!s)return;const d=s.days[curDay];
   $('#dTitle').textContent=s.name;
@@ -889,6 +882,7 @@ function showDetail(id){
   const other=s.types.filter(t=>t!==d.type).map(t=>{const v=d.rows.map(r=>r.scores[t]);return `${TYPE_LABEL[t]} peaks at ${disp(Math.max(...v))} out of 10`}).join('. ');
   const bb=[s.lon-0.04,s.lat-0.025,s.lon+0.04,s.lat+0.025].map(x=>x.toFixed(4)).join('%2C');
   $('#dBody').innerHTML=`
+    ${windMult(s)!==1?`<div class="warn" style="border-left-color:var(--gold)"><strong style="color:var(--gold)">Adjusted forecast.</strong> Wind and gusts for this site include your ${windMult(s)>1?'+':'\u2212'}${Math.round(Math.abs(windMult(s)-1)*100)}% adjustment, and its score and ranking use them. The original forecast is further down this page.</div>`:''}
     <p><strong>${TYPE_LABEL[d.type]}${d.win?`, ${hourLabel(d.win[0])}–${hourLabel(d.win[1])}`:''}</strong></p>
     ${R.out.map(x=>`<p>${esc(x)}</p>`).join('')}
     ${R.warn.map(x=>`<div class="warn">${esc(x)}</div>`).join('')}
@@ -897,7 +891,8 @@ function showDetail(id){
     <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${dial(s,d.peak.wd,d.peak.ws,88)}<p class="small" style="margin:0">Shaded wedges are the wind directions this launch works in (darker is better). The arrow is the forecast wind at the best hour.</p></div>
     <div class="panel"><h3>Hourly forecast</h3></div>
     <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th></tr></thead><tbody id="hrRows">${rowsHtml}</tbody></table></div>
-    ${windMult(s)!==1?`<p class="hint"><span class="star">*</span> Includes your ${windMult(s)>1?'+':'\u2212'}${Math.round(Math.abs(windMult(s)-1)*100)}% wind correction for this site. Raw forecast at the best hour: ${U.spd(d.peak.ws/windMult(s))}, gusts ${U.spd(d.peak.gust/windMult(s))}. Change it under Edit this site.</p>`:''}
+    ${windMult(s)!==1?`<p class="hint"><span class="star">*</span> Includes your ${windMult(s)>1?'+':'\u2212'}${Math.round(Math.abs(windMult(s)-1)*100)}% site adjustment. Original forecast at the best hour: ${U.spd(d.peak.ws/windMult(s))}, gusts ${U.spd(d.peak.gust/windMult(s))}. Change it under Edit this site.</p>`:''}
+    ${windMult(s)!==1?origTable(s,d):''}
     <div id="snd"></div>
     <iframe class="mapframe" loading="lazy" title="Map of ${esc(s.name)}" src="https://www.openstreetmap.org/export/embed.html?bbox=${bb}&layer=mapnik&marker=${s.lat}%2C${s.lon}"></iframe>
     <div class="links">
@@ -908,7 +903,7 @@ function showDetail(id){
       ${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">Site guide</a>`:''}
     </div>
     <dl>
-      <dt>Launch</dt><dd>${U.altN(s.alt||0)}, ${s.km.toFixed(0)} km away</dd>
+      <dt>Launch</dt><dd>${U.altN(s.alt||0)}, ${U.dist(s.km)} away</dd>
       <dt>Good winds</dt><dd>${esc(dirsText(s.dirs))}${s.dirSrc?` <span class="small">(${esc(s.dirSrc)})</span>`:''}</dd>
       <dt>Flying types</dt><dd>${s.types.map(t=>TYPE_LABEL[t]).join(', ')}</dd>
       ${s.req?`<dt>Requirements</dt><dd>${esc(s.req)}</dd>`:''}
@@ -933,7 +928,8 @@ function showEditor(s){
     body.innerHTML=`<p class="small">Tap a direction to cycle: off, workable, good. Saved on this phone right away.</p>
       <div class="compass">${DIRS.map((d,i)=>`<button data-i="${i}" data-r="${arr[i]}" aria-label="${d} ${['off','workable','good'][arr[i]]}">${d}</button>`).join('')}</div>
       <div class="chips" style="margin:14px 0">${['thermal','ridge','coastal'].map(t=>`<button class="chip" data-t="${t}" aria-pressed="${types.includes(t)}">${TYPE_LABEL[t]}</button>`).join('')}</div>
-      <label class="field"><span>Wind here compared with the forecast</span><select id="eMult">${[[0.7,'Usually 30% lighter'],[0.85,'Usually 15% lighter'],[1,'About as forecast'],[1.2,'Usually 20% stronger'],[1.4,'Usually 40% stronger'],[1.6,'Usually 60% stronger']].map(([v,l])=>`<option value="${v}" ${(o.windMult||1)==v?'selected':''}>${l}</option>`).join('')}</select></label>
+      <label class="field"><span>Your wind adjustment for this site</span><select id="eMult">${[[0.7,'30% lighter than forecast'],[0.8,'20% lighter than forecast'],[0.9,'10% lighter than forecast'],[1,'No adjustment (standard forecast)'],[1.1,'10% stronger than forecast'],[1.2,'20% stronger than forecast'],[1.3,'30% stronger than forecast'],[1.4,'40% stronger than forecast'],[1.5,'50% stronger than forecast'],[1.6,'60% stronger than forecast']].map(([v,l])=>`<option value="${v}" ${(o.windMult||1)==v?'selected':''}>${l}</option>`).join('')}</select></label>
+      <p class="small" style="margin:-6px 0 8px">If set, this site\u2019s wind, gusts, score and ranking use your adjusted numbers on this phone, clearly marked, and the original forecast stays available on its detail page.</p>
       <label class="field"><span>Your note</span><input type="text" id="eNote" value="${esc(o.note||'')}"></label>
       <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="eHide" ${o.hidden?'checked':''}> Hide this site</label>
       <div class="status actions" style="padding:0"><button class="btn primary" id="eSave">Save changes</button><button class="btn" id="eReset">Reset to original</button></div>`;
@@ -954,7 +950,9 @@ function showSettings(){
     <label class="field"><span>Location: town, city, or coordinates</span><input type="text" id="placeQ" placeholder="Bishop, CA  or  37.4754, -121.8613" autocomplete="off" enterkeyhint="search"></label>
     <div class="results" id="placeR"></div>
     <button class="locbtn" id="gpsBtn" style="margin:2px 0 6px">Use my current location</button>
-    <label class="field"><span>Search radius</span><select id="radius">${[50,100,150,200,300].map(k=>`<option value="${k}" ${k==settings.radiusKm?'selected':''}>${k} km (${Math.round(k/1.609)} mi)</option>`).join('')}</select></label>
+    <label class="field"><span>Search radius</span><select id="radius">${(()=>{const us=settings.units==='us';const opts=(us?[25,50,75,100,150,200]:[40,80,120,160,240,320]).map(v=>us?v*1.609344:v);
+   const near=opts.reduce((a,b)=>Math.abs(b-settings.radiusKm)<Math.abs(a-settings.radiusKm)?b:a);
+   return opts.map(k=>`<option value="${k}" ${k===near?'selected':''}>${U.dist(k)}</option>`).join('')})()}</select></label>
     <label class="field"><span>Units</span><select id="units"><option value="us" ${settings.units==='us'?'selected':''}>mph, feet, fpm</option><option value="metric" ${settings.units==='metric'?'selected':''}>km/h, metres, m/s</option></select></label>
     <label class="field"><span>Most sites to check</span><select id="maxS">${[25,45,70].map(k=>`<option ${k==settings.maxSites?'selected':''}>${k}</option>`).join('')}</select></label>
     <h3 class="section" style="padding-left:0">Data sources</h3>
@@ -970,7 +968,7 @@ function showSettings(){
       $('#placeR').innerHTML=(j.results||[]).map(r=>`<button data-la="${r.latitude}" data-lo="${r.longitude}" data-n="${esc(r.name)}">${esc(r.name)}<span class="small">, ${esc([r.admin1,r.country].filter(Boolean).join(', '))}</span></button>`).join('')||'<p class="small">No matches.</p>';
       $('#placeR').querySelectorAll('button').forEach(x=>x.onclick=()=>setLoc(+x.dataset.la,+x.dataset.lo,x.dataset.n))}catch(err){$('#placeR').innerHTML='<p class="small">Search is unavailable right now.</p>'}},350)};
   $('#radius').onchange=e=>{settings.radiusKm=+e.target.value;saveSettings();load(false)};
-  $('#units').onchange=e=>{settings.units=e.target.value;saveSettings();render()};
+  $('#units').onchange=e=>{settings.units=e.target.value;saveSettings();render();showSettings()};
   $('#maxS').onchange=e=>{settings.maxSites=+e.target.value;saveSettings();load(false)};
   openSheet('#settings');
 }
@@ -1011,7 +1009,7 @@ async function load(keepDay=true){
   if(loading)return;loading=true;
   const {lat,lon,name}=settings.loc;
   const main=$('#main');
-  $('#where').innerHTML=`${locButton(name)}<span>${settings.radiusKm} km radius</span>`;
+  $('#where').innerHTML=`${locButton(name)}<span>${U.dist(settings.radiusKm)} radius</span>`;
   try{
     main.innerHTML=`<div class="status"><h2>Finding sites</h2><p>Checking club guides, BHGC, Paragliding Earth and OpenStreetMap…</p></div>`;
     SITES=await gatherSites(lat,lon,settings.radiusKm);
@@ -1023,7 +1021,7 @@ async function load(keepDay=true){
       if(!keepDay||!DAYKEYS.includes(curDay))curDay=DAYKEYS[0];
     }
     const now=new Date();
-    $('#where').innerHTML=`${locButton(name)}<span>${settings.radiusKm} km radius</span><span>${SITES.length} sites</span><span>Updated ${now.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</span>`;
+    $('#where').innerHTML=`${locButton(name)}<span>${U.dist(settings.radiusKm)} radius</span><span>${SITES.length} sites</span><span>Updated ${now.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</span>`;
     render();
   }catch(e){
     console.error(e);
