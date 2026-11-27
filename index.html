@@ -1109,7 +1109,12 @@ $('#wGo').onclick=()=>{
   if(!navigator.geolocation){$('#wMsg').textContent='This browser can\u2019t share your location. Search for a city instead.';return}
   $('#wMsg').textContent='Finding your location…';
   navigator.geolocation.getCurrentPosition(p=>{settings.loc={lat:p.coords.latitude,lon:p.coords.longitude,name:'your location',gps:true};saveSettings();hideWelcome();load(false)},
-    ()=>{$('#wMsg').textContent='Couldn\u2019t get your location. Turn on location access, or search for a city instead.'},{timeout:10000,maximumAge:6e5});
+    err=>{const ios=/iPhone|iPad/.test(navigator.userAgent);
+      $('#wMsg').textContent=err&&err.code===1
+        ?(ios?'Location is blocked for SkyWizard. On iPhone: Settings \u2192 Privacy & Security \u2192 Location Services \u2192 Safari Websites \u2192 While Using, then try again. Or search for a city.'
+             :'Location is blocked for this site. Click the icon at the left of the address bar, set Location to Allow, reload, and try again. Or search for a city.')
+        :err&&err.code===2?'Your device couldn\u2019t work out where you are. Check that Location Services is on for your browser in your system settings, or search for a city.'
+        :'Finding your location took too long. Try again, or search for a city.'},{timeout:15000,maximumAge:6e5,enableHighAccuracy:false});
 };
 showWelcome();
 </script>
