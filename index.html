@@ -524,10 +524,21 @@ async function fetchWeather(sites,onProgress){
   for(let i=0;i<sites.length;i+=B){
     const ch=sites.slice(i,i+B);
     onProgress&&onProgress(i,sites.length);
+    if(i>0)await new Promise(res=>setTimeout(res,1500));
     const url='https://api.open-meteo.com/v1/forecast?latitude='+ch.map(s=>s.lat.toFixed(4)).join(',')+
       '&longitude='+ch.map(s=>s.lon.toFixed(4)).join(',')+'&elevation='+ch.map(s=>Math.round(s.alt??0)).join(',')+
       '&hourly='+SURF.concat(LV).join(',')+'&forecast_days=3&wind_speed_unit=kmh&timezone='+encodeURIComponent(TZ);
-    const j=await fetchJSON(url,{},25000);
+    let j=null;
+    for(let attempt=0;attempt<4;attempt++){
+      const r=await withTimeout(fetch(url),25000);
+      if(r.ok){j=await r.json();break}
+      let reason='';try{reason=(await r.json()).reason||''}catch(e){}
+      // free plan allows ~600 weighted requests a minute; big searches can hit it, so wait and retry
+      if(r.status===429&&attempt<3){const wait=/minute/i.test(reason)||!reason?20:60;
+        for(let t=wait;t>0;t--){const e=$('#prog');if(e)e.textContent=`The weather service asked us to slow down. Retrying in ${t}s…`;await new Promise(res=>setTimeout(res,1000))}
+        continue}
+      throw new Error(r.status===429?'the free daily or hourly weather limit was reached, so try again later or use a smaller radius':(reason||'HTTP '+r.status));
+    }
     const arr=Array.isArray(j)?j:[j];
     arr.forEach((loc,k)=>{ch[k].wx=loc.hourly;if(ch[k].alt==null)ch[k].alt=loc.elevation});
   }
