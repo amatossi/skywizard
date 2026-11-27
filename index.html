@@ -180,6 +180,7 @@ details.xc .what{font-size:.88rem;color:var(--muted);border-top:1px solid var(--
 .welcome .results{text-align:left}
 .wgo{width:100%;margin-top:18px;padding:14px;font-size:1.1rem}
 #wMsg{min-height:1.2em;margin-top:10px}
+.dirbtns{display:flex;gap:8px;margin:4px 0 0}.dirbtns .btn{flex:1;text-align:center;text-decoration:none;padding:12px 10px}
 </style>
 </head>
 <body>
@@ -389,8 +390,11 @@ async function bhgcSites(){
     if(f.WindDirections){const toks=f.WindDirections.replace(/'[^']*'=/g,'').toUpperCase().split(/[^A-Z]+/).filter(Boolean);dirs=listToArr(toks)}
     const alt=L.altFt?L.altFt/FT_PER_M:null;
     const notes=(f.Notes||'').replace(/^"|"$/g,'').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1');
+    let lz=null;{const re2=/(?:'([^']*)'\s*=\s*)?\(\s*([-\d.]+)\s*,\s*([-\d.]+)/g;let q;const lzs=[];
+      while((q=re2.exec(f.LZGPS||''))){lzs.push({label:q[1]||'',lat:+q[2],lon:+q[3]})}
+      lz=lzs.find(x=>/main/i.test(x.label))||lzs[0]||null}
     const others=launches.filter(x=>x!==L&&x.altFt&&L.altFt&&x.altFt<L.altFt-80&&distKm(x.lat,x.lon,L.lat,L.lon)<3).map(x=>({name:(x.label?x.label.replace(/\/.*$/,'').replace(/^./,c=>c.toUpperCase())+' launch':'Lower launch'),alt:x.altFt/FT_PER_M}));
-    out.push({id:'b-'+slug(f.Name),name:f.Name,lat:L.lat,lon:L.lon,alt,types:null,dirs,dirSrc:dirs?'BHGC':null,others,
+    out.push({id:'b-'+slug(f.Name),name:f.Name,lat:L.lat,lon:L.lon,alt,types:null,dirs,dirSrc:dirs?'BHGC':null,others,lz,allLaunches:launches,
       note:notes,req:(f.Requirements||'').trim(),url:f.OfficialURL||'',source:'BHGC site database'});
   }
   return out;
@@ -491,6 +495,11 @@ async function gatherSites(lat,lon,km){
   ];
   const res=await Promise.allSettled(jobs.map(j=>j[1]));
   res.forEach((r,i)=>{const name=jobs[i][0];if(r.status==='fulfilled'){sourceStatus[name]=r.value.length?'ok':'no sites here';add(r.value)}else{sourceStatus[name]='unavailable';console.warn(name,r.reason)}});
+  // landing zones: borrow from the BHGC entry for the same site when a source doesn't list one
+  const bh=res[0].status==='fulfilled'?res[0].value:[];
+  for(const s of all){if(s.lz)continue;
+    const m=bh.find(b=>b.lz&&((b.allLaunches||[]).some(L=>distKm(L.lat,L.lon,s.lat,s.lon)<3)||(distKm(b.lat,b.lon,s.lat,s.lon)<6&&nameKey(b.name)===nameKey(s.name))));
+    if(m)s.lz=m.lz}
   // apply user overrides
   for(const s of all){const o=overrides[s.id];if(!o)continue;
     if(o.dirs){s.dirs=o.dirs.slice();s.dirSrc='your edit'}
@@ -935,9 +944,10 @@ function showDetail(id){
     ${windMult(s)!==1?origTable(s,d):''}
     <div id="snd"></div>
     <iframe class="mapframe" loading="lazy" title="Map of ${esc(s.name)}" src="https://www.openstreetmap.org/export/embed.html?bbox=${bb}&layer=mapnik&marker=${s.lat}%2C${s.lon}"></iframe>
+    <div class="dirbtns"><a class="btn primary" href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">Directions to Launch</a>${s.lz?`<a class="btn primary" href="https://www.google.com/maps/dir/?api=1&destination=${s.lz.lat},${s.lz.lon}" target="_blank" rel="noopener">Directions to LZ</a>`:''}</div>
+    ${s.lz?'':'<p class="small" style="margin:6px 0 0">No landing zone listed for this site, so check the site guide.</p>'}
     ${camsPanel(s)}
     <div class="links">
-      <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">Directions</a>
       <a href="https://www.windy.com/${s.lat.toFixed(3)}/${s.lon.toFixed(3)}?${s.lat.toFixed(3)},${s.lon.toFixed(3)},12" target="_blank" rel="noopener">Windy</a>
       <a href="https://forecast.weather.gov/MapClick.php?lat=${s.lat}&lon=${s.lon}" target="_blank" rel="noopener">NWS forecast</a>
       <a href="https://thermal.kk7.ch/#${s.lat},${s.lon},13z" target="_blank" rel="noopener">Thermal map</a>
