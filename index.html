@@ -124,7 +124,7 @@ dt{color:var(--muted)}
 dd{margin:0}
 label.field{display:block;margin:12px 0}
 label.field span{display:block;font-size:.85rem;color:var(--muted);margin-bottom:4px}
-select,input[type=text],input[type=number],textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+select,input[type=text],input[type=url],input[type=number],textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
 select option{color:#211a57}
 .compass{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
 .compass button{padding:8px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-family:Fredoka,sans-serif;font-weight:500}
@@ -162,9 +162,42 @@ details.xc .what{font-size:.88rem;color:var(--muted);border-top:1px solid var(--
 .readout span{font-size:.75rem;color:var(--muted)}
 .star{color:var(--gold);font-weight:800;margin-left:1px}
 .adj{display:inline-block;margin-left:8px;padding:0 8px;border-radius:999px;font-size:.72rem;font-weight:700;line-height:1.6;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 55%,transparent);vertical-align:1px}
+.camlist{display:flex;flex-direction:column;gap:8px}
+.cam{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);text-decoration:none;font-weight:700}
+.cam .dot{width:9px;height:9px;border-radius:50%;background:var(--poor);box-shadow:0 0 8px var(--poor);flex:none}
+
+.welcome{position:fixed;inset:0;z-index:50;display:none;overflow-y:auto;background:var(--bg);
+  background-image:radial-gradient(60% 40% at 50% 0%,var(--glowA),transparent 70%),radial-gradient(60% 40% at 0% 100%,var(--glowB),transparent 70%),linear-gradient(180deg,var(--bg),var(--bg2))}
+.welcome.open{display:block}
+.wbox{max-width:420px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 36px) 22px 40px;text-align:center}
+.wlogo{width:min(62vw,250px);aspect-ratio:1;border-radius:28%;display:block;margin:0 auto 18px;box-shadow:0 18px 60px -12px color-mix(in srgb,var(--violet) 75%,transparent),0 0 0 1px rgba(255,255,255,.08)}
+.welcome h1{font-family:Fredoka,sans-serif;font-weight:600;font-size:2.3rem;margin:0;color:var(--cyan);letter-spacing:.01em}
+.wtag{margin:2px 0 22px;color:var(--muted);font-size:1.05rem}
+.welcome .field{text-align:left}
+.wloc{display:flex;gap:8px;align-items:center}
+.wloc .chip{flex:none;padding:9px 14px}
+.wloc input{flex:1;min-width:0}
+.welcome .results{text-align:left}
+.wgo{width:100%;margin-top:18px;padding:14px;font-size:1.1rem}
+#wMsg{min-height:1.2em;margin-top:10px}
 </style>
 </head>
 <body>
+<section class="welcome" id="welcome" aria-labelledby="wTitle">
+  <div class="wbox">
+    <img class="wlogo" src="apple-touch-icon.png" alt="SkyWizard: a wizard flying a paraglider through the night sky">
+    <h1 id="wTitle">SkyWizard</h1>
+    <p class="wtag">Find the best place to fly.</p>
+    <label class="field"><span>Forecast from</span>
+      <div class="wloc"><button type="button" class="chip" id="wNear" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" style="vertical-align:-2px"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg> Near me</button>
+      <input type="text" id="wCity" placeholder="or search a city" autocomplete="off" enterkeyhint="search" aria-label="Search a city"></div>
+    </label>
+    <div class="results" id="wRes"></div>
+    <label class="field"><span>Search radius</span><select id="wRad"></select></label>
+    <button class="btn primary wgo" id="wGo">Get forecast</button>
+    <p class="small" id="wMsg" role="status"></p>
+  </div>
+</section>
 <header>
   <div class="brand" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg><span>SkyWizard</span></div>
   <div class="top">
@@ -210,11 +243,11 @@ const BHGC_URL='https://raw.githubusercontent.com/BHGC/website/master/content/si
    wind.mph: [min, ideal low, ideal high, max] for launching paragliders
    dirSrc tells the user how trustworthy the directions are */
 const CURATED=[
- {name:'Ed Levin, 1750 launch',lat:37.475389,lon:-121.861305,altFt:2150,types:['thermal','ridge'],
+ {name:'Ed Levin, 1750 launch',lat:37.475389,lon:-121.861305,altFt:2150,cams:[{name:'Ed Levin live webcam',url:'https://www.youtube.com/watch?v=MmhwxQR_CtA'}],types:['thermal','ridge'],
   dirs:{S:1,SSW:1,SW:2,WSW:2,W:2,WNW:2,NW:1},dirSrc:'Wings of Rogallo site guide',
   note:'Wind is often light S in the morning, strengthening and clocking to WNW by early afternoon. Watch for rotor behind trees in S–SE wind. A SE-facing back launch works in light SE (under ~8 mph).',
   req:'P3, or P2 with 4 flights from 500 ft+ and a site intro',url:'https://wingsofrogallo.org/ed-levin'},
- {name:'Ed Levin, 600 launch',lat:37.461324,lon:-121.859979,altFt:1000,types:['thermal','ridge'],
+ {name:'Ed Levin, 600 launch',lat:37.461324,lon:-121.859979,altFt:1000,cams:[{name:'Ed Levin live webcam',url:'https://www.youtube.com/watch?v=MmhwxQR_CtA'}],types:['thermal','ridge'],
   dirs:{S:1,SSW:2,SW:2,WSW:2,W:2,WNW:2,NW:1},dirSrc:'Wings of Rogallo site guide',
   note:'Three launches face S, SW and W. A northerly can wrap around and make rotor at the South launch. North and West launches have sharp rocks behind and below.',
   req:'P3, or P2 with 3 flights from 300 ft+ and a site intro',url:'https://wingsofrogallo.org/ed-levin'},
@@ -233,7 +266,7 @@ const CURATED=[
  {name:'Mount Diablo, South',lat:37.878612,lon:-121.920345,altFt:3575,types:['thermal'],
   dirs:{S:2,SSE:2,SE:2,ESE:2},wind:{mph:[3,4,7,10]},dirSrc:'Wings of Rogallo site guide',
   note:'Paraglider winds 3–10 mph. Glide to Curry Point LZ about 5.6:1.',req:'P4 (WOR)',url:'https://wingsofrogallo.org/mt-diablo'},
- {name:'Mussel Rock (The Dumps)',lat:37.672728,lon:-122.493688,altFt:230,types:['coastal'],
+ {name:'Mussel Rock (The Dumps)',lat:37.672728,lon:-122.493688,altFt:230,cams:[{name:'Mussel bowl live webcam',url:'https://www.youtube.com/watch?v=vZEINdmawdc'},{name:'Mussel Rock live conditions',url:'https://musselrock.app'}],types:['coastal'],
   dirs:{WSW:1,W:2,WNW:2,NW:2,NNW:1},wind:{mph:[9,12,20,25]},dirSrc:'estimated from cliff orientation, please confirm',
   note:'Paragliding only. Strong cliff updrafts; keep clear of the cliff face.',req:'P2–P3'},
  {name:'The Stables',lat:37.7018995,lon:-122.4998547,altFt:60,types:['coastal'],
@@ -335,7 +368,7 @@ function dirsText(arr){
 function curatedSites(){
   return CURATED.map(s=>({id:'c-'+slug(s.name),name:s.name,lat:s.lat,lon:s.lon,alt:s.altFt?s.altFt/FT_PER_M:null,
     types:s.types,dirs:dirsToArr(s.dirs),dirSrc:s.dirs?(s.dirSrc||'club guide'):null,
-    wind:s.wind?s.wind.mph.map(x=>x*KMH_PER_MPH):null,others:(s.others||[]).map(o=>({name:o.name,alt:o.altFt/FT_PER_M})),note:s.note||'',req:s.req||'',url:s.url||'',source:'Club guides'}));
+    wind:s.wind?s.wind.mph.map(x=>x*KMH_PER_MPH):null,others:(s.others||[]).map(o=>({name:o.name,alt:o.altFt/FT_PER_M})),cams:s.cams||[],note:s.note||'',req:s.req||'',url:s.url||'',source:'Club guides'}));
 }
 
 async function bhgcSites(){
@@ -873,6 +906,13 @@ function origTable(s,d){
     <div class="tablewrap"><table><thead><tr><th>Hour</th><th>Direction</th><th>Wind</th><th>Gust</th><th>Score</th></tr></thead><tbody>${rows.map(r=>{const x=r.rawScores[d.type];return `<tr><td>${hourLabel(r.hr)}</td><td>${dirName(r.raw.wd)}</td><td>${U.spd(r.raw.ws)}</td><td>${U.spd(r.raw.gust)}</td><td class="sc ${cls(x)}">${disp(x)}</td></tr>`}).join('')}</tbody></table></div>
     <p class="what">This is the standard forecast for this site before your adjustment, the same numbers anyone else using SkyWizard sees. Compare it with what you actually feel on launch to fine-tune your percentage under Edit this site.</p></div></details>`;
 }
+function camsPanel(s){
+  const o=overrides[s.id]||{};const cams=(s.cams||[]).slice();if(o.cam)cams.unshift({name:'Your webcam',url:o.cam,mine:true});
+  const near=`https://www.windy.com/-Webcams/webcams?${s.lat.toFixed(3)},${s.lon.toFixed(3)},12`;
+  return `<div class="panel"><h3>Live webcams</h3>
+    ${cams.length?`<div class="camlist">${cams.map(c=>`<a class="cam" href="${esc(c.url)}" target="_blank" rel="noopener"><span class="dot"></span>${esc(c.name)}${c.mine?' <span class="small">(added by you)</span>':''}</a>`).join('')}</div>`:`<p class="small" style="margin:0 0 8px">No webcam saved for this site yet. You can add one under Edit this site.</p>`}
+    <a class="btn" style="display:inline-block;margin-top:8px;text-decoration:none" href="${near}" target="_blank" rel="noopener">Find nearby webcams on a map</a></div>`;
+}
 function showDetail(id){
   const s=SITES.find(x=>x.id===id);if(!s)return;const d=s.days[curDay];
   $('#dTitle').textContent=s.name;
@@ -895,6 +935,7 @@ function showDetail(id){
     ${windMult(s)!==1?origTable(s,d):''}
     <div id="snd"></div>
     <iframe class="mapframe" loading="lazy" title="Map of ${esc(s.name)}" src="https://www.openstreetmap.org/export/embed.html?bbox=${bb}&layer=mapnik&marker=${s.lat}%2C${s.lon}"></iframe>
+    ${camsPanel(s)}
     <div class="links">
       <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">Directions</a>
       <a href="https://www.windy.com/${s.lat.toFixed(3)}/${s.lon.toFixed(3)}?${s.lat.toFixed(3)},${s.lon.toFixed(3)},12" target="_blank" rel="noopener">Windy</a>
@@ -930,12 +971,14 @@ function showEditor(s){
       <div class="chips" style="margin:14px 0">${['thermal','ridge','coastal'].map(t=>`<button class="chip" data-t="${t}" aria-pressed="${types.includes(t)}">${TYPE_LABEL[t]}</button>`).join('')}</div>
       <label class="field"><span>Your wind adjustment for this site</span><select id="eMult">${[[0.7,'30% lighter than forecast'],[0.8,'20% lighter than forecast'],[0.9,'10% lighter than forecast'],[1,'No adjustment (standard forecast)'],[1.1,'10% stronger than forecast'],[1.2,'20% stronger than forecast'],[1.3,'30% stronger than forecast'],[1.4,'40% stronger than forecast'],[1.5,'50% stronger than forecast'],[1.6,'60% stronger than forecast']].map(([v,l])=>`<option value="${v}" ${(o.windMult||1)==v?'selected':''}>${l}</option>`).join('')}</select></label>
       <p class="small" style="margin:-6px 0 8px">If set, this site\u2019s wind, gusts, score and ranking use your adjusted numbers on this phone, clearly marked, and the original forecast stays available on its detail page.</p>
+      <label class="field"><span>Your webcam link (paste a YouTube or webcam page address)</span><input type="url" id="eCam" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(o.cam||'')}"></label>
       <label class="field"><span>Your note</span><input type="text" id="eNote" value="${esc(o.note||'')}"></label>
       <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="eHide" ${o.hidden?'checked':''}> Hide this site</label>
       <div class="status actions" style="padding:0"><button class="btn primary" id="eSave">Save changes</button><button class="btn" id="eReset">Reset to original</button></div>`;
     body.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;arr[i]=(arr[i]+1)%3;draw()});
     body.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const t=b.dataset.t;types=types.includes(t)?types.filter(x=>x!==t):types.concat(t);if(!types.length)types=[t];draw()});
-    $('#eSave').onclick=()=>{overrides[s.id]={name:s.name,dirs:arr.some(x=>x)?arr:null,types,note:$('#eNote').value.trim(),hidden:$('#eHide').checked,windMult:+$('#eMult').value};
+    $('#eSave').onclick=()=>{overrides[s.id]={name:s.name,dirs:arr.some(x=>x)?arr:null,types,note:$('#eNote').value.trim(),hidden:$('#eHide').checked,windMult:+$('#eMult').value,cam:/^https?:\/\//i.test($('#eCam').value.trim())?$('#eCam').value.trim():''};
+      if(!overrides[s.id].cam)delete overrides[s.id].cam;
       if(overrides[s.id].windMult===1)delete overrides[s.id].windMult;
       if(!overrides[s.id].dirs)delete overrides[s.id].dirs;store.set('overrides',overrides);toast('Saved');closeSheet($('#editor'));closeSheet($('#detail'));load(false)};
     $('#eReset').onclick=()=>{delete overrides[s.id];store.set('overrides',overrides);toast('Reset');closeSheet($('#editor'));closeSheet($('#detail'));load(false)};
@@ -947,7 +990,7 @@ function showSettings(){
   const b=$('#sBody');
   const st=Object.entries(sourceStatus).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
   b.innerHTML=`
-    <label class="field"><span>Location: town, city, or coordinates</span><input type="text" id="placeQ" placeholder="Bishop, CA  or  37.4754, -121.8613" autocomplete="off" enterkeyhint="search"></label>
+    <label class="field"><span>Location: town or city</span><input type="text" id="placeQ" placeholder="Town or city, e.g. Milpitas" autocomplete="off" enterkeyhint="search"></label>
     <div class="results" id="placeR"></div>
     <button class="locbtn" id="gpsBtn" style="margin:2px 0 6px">Use my current location</button>
     <label class="field"><span>Search radius</span><select id="radius">${(()=>{const us=settings.units==='us';const opts=(us?[25,50,75,100,150,200]:[40,80,120,160,240,320]).map(v=>us?v*1.609344:v);
@@ -960,10 +1003,6 @@ function showSettings(){
   $('#gpsBtn').onclick=()=>{settings.loc=null;saveSettings();closeSheet($('#settings'));locate()};
   $('#placeQ').onkeydown=e=>{if(e.key==='Enter'){const f=$('#placeR').querySelector('button');if(f)f.click()}};
   let tmr;$('#placeQ').oninput=e=>{clearTimeout(tmr);const q=e.target.value.trim();if(q.length<2){$('#placeR').innerHTML='';return}
-    const cm=q.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
-    if(cm&&Math.abs(+cm[1])<=90&&Math.abs(+cm[2])<=180){const la=+cm[1],lo=+cm[2];
-      $('#placeR').innerHTML=`<button data-la="${la}" data-lo="${lo}" data-n="${la.toFixed(3)}, ${lo.toFixed(3)}">Use coordinates ${la.toFixed(4)}, ${lo.toFixed(4)}</button>`;
-      $('#placeR').querySelector('button').onclick=()=>setLoc(la,lo,`${la.toFixed(3)}, ${lo.toFixed(3)}`);return}
     tmr=setTimeout(async()=>{try{const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5`);
       $('#placeR').innerHTML=(j.results||[]).map(r=>`<button data-la="${r.latitude}" data-lo="${r.longitude}" data-n="${esc(r.name)}">${esc(r.name)}<span class="small">, ${esc([r.admin1,r.country].filter(Boolean).join(', '))}</span></button>`).join('')||'<p class="small">No matches.</p>';
       $('#placeR').querySelectorAll('button').forEach(x=>x.onclick=()=>setLoc(+x.dataset.la,+x.dataset.lo,x.dataset.n))}catch(err){$('#placeR').innerHTML='<p class="small">Search is unavailable right now.</p>'}},350)};
@@ -1030,9 +1069,39 @@ async function load(keepDay=true){
   }finally{loading=false}
 }
 
-$('#refreshBtn').onclick=()=>{if(settings.loc)load(true);else locate()};
+$('#refreshBtn').onclick=()=>{if(settings.loc)load(true);else showWelcome()};
 $('#settingsBtn').onclick=showSettings;
-locate();
+/* ---------- welcome screen (shown every time the app opens) ---------- */
+let wPick={gps:true};
+function showWelcome(){
+  wPick={gps:true};
+  const us=settings.units==='us';const opts=(us?[25,50,75,100,150,200]:[40,80,120,160,240,320]).map(v=>us?v*1.609344:v);
+  const near=opts.reduce((a,b)=>Math.abs(b-settings.radiusKm)<Math.abs(a-settings.radiusKm)?b:a);
+  $('#wRad').innerHTML=opts.map(k=>`<option value="${k}" ${k===near?'selected':''}>${U.dist(k)}</option>`).join('');
+  $('#wCity').value='';$('#wRes').innerHTML='';$('#wMsg').textContent='';$('#wNear').setAttribute('aria-pressed','true');
+  $('#welcome').classList.add('open');document.body.style.overflow='hidden';
+}
+function hideWelcome(){$('#welcome').classList.remove('open');document.body.style.overflow=''}
+$('#wNear').onclick=()=>{wPick={gps:true};$('#wNear').setAttribute('aria-pressed','true');$('#wCity').value='';$('#wRes').innerHTML=''};
+let wT;
+$('#wCity').oninput=e=>{clearTimeout(wT);const q=e.target.value.trim();
+  if(q.length<2){$('#wRes').innerHTML='';return}
+  wT=setTimeout(async()=>{try{const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5`);
+    $('#wRes').innerHTML=(j.results||[]).map(r=>`<button data-la="${r.latitude}" data-lo="${r.longitude}" data-n="${esc(r.name)}">${esc(r.name)}<span class="small">, ${esc([r.admin1,r.country].filter(Boolean).join(', '))}</span></button>`).join('')||'<p class="small">No matches.</p>';
+    $('#wRes').querySelectorAll('button').forEach(x=>x.onclick=()=>{wPick={gps:false,lat:+x.dataset.la,lon:+x.dataset.lo,name:x.dataset.n};
+      $('#wCity').value=x.dataset.n;$('#wRes').innerHTML='';$('#wNear').setAttribute('aria-pressed','false')})}
+  catch(err){$('#wRes').innerHTML='<p class="small">City search is unavailable right now.</p>'}},300)};
+$('#wCity').onkeydown=e=>{if(e.key==='Enter'){const f=$('#wRes').querySelector('button');if(f)f.click()}};
+$('#wGo').onclick=()=>{
+  settings.radiusKm=+$('#wRad').value;
+  if(!wPick.gps){if($('#wCity').value.trim()&&wPick.lat==null){$('#wMsg').textContent='Pick a city from the list first.';return}
+    settings.loc={lat:wPick.lat,lon:wPick.lon,name:wPick.name};saveSettings();hideWelcome();load(false);return}
+  if(!navigator.geolocation){$('#wMsg').textContent='This browser can\u2019t share your location. Search for a city instead.';return}
+  $('#wMsg').textContent='Finding your location…';
+  navigator.geolocation.getCurrentPosition(p=>{settings.loc={lat:p.coords.latitude,lon:p.coords.longitude,name:'your location',gps:true};saveSettings();hideWelcome();load(false)},
+    ()=>{$('#wMsg').textContent='Couldn\u2019t get your location. Turn on location access, or search for a city instead.'},{timeout:10000,maximumAge:6e5});
+};
+showWelcome();
 </script>
 </body>
 </html>
